@@ -15,14 +15,14 @@ import time
 # -------------------------------
 
 
-def load_zip(file_bytes: bytes) -> List[Tuple[str, bytes]]:
+def load_zip(file_bytes: bytes, name_prefix: str = "") -> List[Tuple[str, bytes]]:
 	with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
 		items = []
 		for info in zf.infolist():
 			if info.is_dir():
 				continue
 			with zf.open(info) as f:
-				items.append((info.filename, f.read()))
+				items.append((f"{name_prefix}{info.filename}", f.read()))
 		return items
 
 
@@ -176,18 +176,22 @@ def group_dicoms_by_series(items: List[Tuple[str, bytes]]):
 def main():
 	st.set_page_config(page_title="ZIP Viewer", layout="wide")
 	st.title("ZIP Viewer for Imaging Files")
-	st.caption("Upload a .zip; we will preview images, PDFs (first page), and DICOMs.")
+	st.caption("Upload one or more .zip files; we will preview images, PDFs (first page), and DICOMs.")
 
-	uploaded = st.file_uploader("Upload ZIP", type=["zip"], accept_multiple_files=False)
-	if not uploaded:
-		st.info("Select a .zip file to begin.")
+	uploaded_files = st.file_uploader("Upload ZIP file(s)", type=["zip"], accept_multiple_files=True)
+	if not uploaded_files:
+		st.info("Select one or more .zip files to begin.")
 		return
 
-	with st.spinner("Loading ZIP..."):
-		items = load_zip(uploaded.read())
+	with st.spinner("Loading ZIPs..."):
+		items: List[Tuple[str, bytes]] = []
+		for uf in uploaded_files:
+			# Prefix inner paths with the ZIP filename to avoid collisions and to show provenance
+			zip_items = load_zip(uf.read(), name_prefix=f"{uf.name}/")
+			items.extend(zip_items)
 
 	# Sidebar: file list
-	st.sidebar.header("Files in ZIP")
+	st.sidebar.header("Files in ZIPs")
 	for name, _ in items:
 		st.sidebar.write(name)
 
@@ -275,6 +279,79 @@ def main():
 				time.sleep(1.0 / float(max(1, fps)))
 				new_idx = idx + 1 if idx < len(frames) else 1
 				st.session_state[pending_key] = new_idx
+				st.rerun()
+
+		# -------------------------------
+		# Multi-select grid view
+		# -------------------------------
+		st.subheader("DICOM Grid View (Multi-select)")
+		grid_selection = st.multiselect(
+			"Select series for grid",
+			options=uid_list,
+			format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}"
+		)
+		if grid_selection:
+			# Shared controls for grid
+			col_gc1, col_gc2, col_gc3, col_gc4, col_gc5, col_gc6 = st.columns([2, 1, 1, 1, 1, 1])
+			grid_frame_key = "grid_frame"
+			grid_pending_key = "grid_pending"
+			grid_play_key = "grid_play"
+			with col_gc1:
+				max_frames = max(len(series[u]["frames"]) for u in grid_selection)  # type: ignore
+				if grid_frame_key not in st.session_state:
+					st.session_state[grid_frame_key] = 1
+				if grid_pending_key in st.session_state:
+					st.session_state[grid_frame_key] = int(st.session_state[grid_pending_key])
+					del st.session_state[grid_pending_key]
+				st.slider("Frame", min_value=1, max_value=max_frames, key=grid_frame_key)
+			with col_gc2:
+				g_ww = st.number_input("WW", value=float(255), key="grid_ww")
+			with col_gc3:
+				g_wl = st.number_input("WL", value=float(128), key="grid_wl")
+			with col_gc4:
+				g_zoom = st.slider("Zoom %", min_value=50, max_value=300, value=100, step=10, key="grid_zoom")
+			with col_gc5:
+				g_fps = st.slider("FPS", min_value=1, max_value=30, value=8, key="grid_fps")
+			with col_gc6:
+				num_cols = st.slider("Columns", min_value=1, max_value=4, value=2, key="grid_cols")
+
+			g_idx = int(st.session_state.get(grid_frame_key, 1))
+
+			# Playback controls for grid
+			col_gb1, col_gb2, col_gb3 = st.columns([1, 1, 2])
+			if col_gb1.button("Prev", key="grid_prev"):
+				new_idx = g_idx - 1 if g_idx > 1 else max_frames
+				st.session_state[grid_pending_key] = new_idx
+				st.rerun()
+			playing_grid = st.session_state.get(grid_play_key, False)
+			if col_gb2.toggle("Play", value=playing_grid, key=grid_play_key):
+				playing_grid = True
+			else:
+				playing_grid = False
+			if col_gb3.button("Next", key="grid_next"):
+				new_idx = g_idx + 1 if g_idx < max_frames else 1
+				st.session_state[grid_pending_key] = new_idx
+				st.rerun()
+
+			# Render grid
+			grid_cols = st.columns(num_cols)
+			for i, uid in enumerate(grid_selection):
+				gs = series[uid]
+				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
+				if not g_frames:
+					continue
+				local_idx = (g_idx - 1) % len(g_frames)
+				img = Image.fromarray(normalize_to_uint8(g_frames[local_idx], ww=g_ww, wl=g_wl))
+				with grid_cols[i % num_cols]:
+					scale = (g_zoom / 100.0)
+					caption = f"{gs['modality']} — {gs['series_desc']} | IM: {local_idx+1}/{len(g_frames)} | {gs['patient_name']}"
+					st.image(img, caption=caption, width=int(mosaic_width * scale))
+
+			# Grid playback loop
+			if playing_grid:
+				time.sleep(1.0 / float(max(1, g_fps)))
+				new_idx = g_idx + 1 if g_idx < max_frames else 1
+				st.session_state[grid_pending_key] = new_idx
 				st.rerun()
 
 	# Group previews for non-DICOM files
