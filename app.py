@@ -291,68 +291,34 @@ def main():
 			format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}"
 		)
 		if grid_selection:
-			# Shared controls for grid
-			col_gc1, col_gc2, col_gc3, col_gc4, col_gc5, col_gc6 = st.columns([2, 1, 1, 1, 1, 1])
-			grid_frame_key = "grid_frame"
-			grid_pending_key = "grid_pending"
-			grid_play_key = "grid_play"
+			# Grid-level controls (shared WW/WL/Zoom/Columns)
+			col_gc1, col_gc2, col_gc3 = st.columns([1, 1, 1])
 			with col_gc1:
-				max_frames = max(len(series[u]["frames"]) for u in grid_selection)  # type: ignore
-				if grid_frame_key not in st.session_state:
-					st.session_state[grid_frame_key] = 1
-				if grid_pending_key in st.session_state:
-					st.session_state[grid_frame_key] = int(st.session_state[grid_pending_key])
-					del st.session_state[grid_pending_key]
-				st.slider("Frame", min_value=1, max_value=max_frames, key=grid_frame_key)
-			with col_gc2:
 				g_ww = st.number_input("WW", value=float(255), key="grid_ww")
-			with col_gc3:
+			with col_gc2:
 				g_wl = st.number_input("WL", value=float(128), key="grid_wl")
-			with col_gc4:
+			with col_gc3:
 				g_zoom = st.slider("Zoom %", min_value=50, max_value=300, value=100, step=10, key="grid_zoom")
-			with col_gc5:
-				g_fps = st.slider("FPS", min_value=1, max_value=30, value=8, key="grid_fps")
-			with col_gc6:
-				num_cols = st.slider("Columns", min_value=1, max_value=4, value=2, key="grid_cols")
+			num_cols = st.slider("Columns", min_value=1, max_value=4, value=2, key="grid_cols")
 
-			g_idx = int(st.session_state.get(grid_frame_key, 1))
-
-			# Playback controls for grid
-			col_gb1, col_gb2, col_gb3 = st.columns([1, 1, 2])
-			if col_gb1.button("Prev", key="grid_prev"):
-				new_idx = g_idx - 1 if g_idx > 1 else max_frames
-				st.session_state[grid_pending_key] = new_idx
-				st.rerun()
-			playing_grid = st.session_state.get(grid_play_key, False)
-			if col_gb2.toggle("Play", value=playing_grid, key=grid_play_key):
-				playing_grid = True
-			else:
-				playing_grid = False
-			if col_gb3.button("Next", key="grid_next"):
-				new_idx = g_idx + 1 if g_idx < max_frames else 1
-				st.session_state[grid_pending_key] = new_idx
-				st.rerun()
-
-			# Render grid
+			# Render grid with per-panel sliders
 			grid_cols = st.columns(num_cols)
 			for i, uid in enumerate(grid_selection):
 				gs = series[uid]
 				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
 				if not g_frames:
 					continue
-				local_idx = (g_idx - 1) % len(g_frames)
-				img = Image.fromarray(normalize_to_uint8(g_frames[local_idx], ww=g_ww, wl=g_wl))
+				panel_key = f"grid_frame_{uid}"
+				if panel_key not in st.session_state:
+					st.session_state[panel_key] = 1
 				with grid_cols[i % num_cols]:
+					# Per-panel frame slider
+					st.slider("Frame", min_value=1, max_value=len(g_frames), key=panel_key)
+					local_idx = int(st.session_state.get(panel_key, 1)) - 1
+					img = Image.fromarray(normalize_to_uint8(g_frames[local_idx], ww=g_ww, wl=g_wl))
 					scale = (g_zoom / 100.0)
 					caption = f"{gs['modality']} — {gs['series_desc']} | IM: {local_idx+1}/{len(g_frames)} | {gs['patient_name']}"
 					st.image(img, caption=caption, width=int(mosaic_width * scale))
-
-			# Grid playback loop
-			if playing_grid:
-				time.sleep(1.0 / float(max(1, g_fps)))
-				new_idx = g_idx + 1 if g_idx < max_frames else 1
-				st.session_state[grid_pending_key] = new_idx
-				st.rerun()
 
 	# Group previews for non-DICOM files
 	img_cols = st.columns(3)
