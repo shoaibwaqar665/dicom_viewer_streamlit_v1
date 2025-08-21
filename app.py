@@ -223,88 +223,12 @@ def main():
 	# DICOM series preview (patient + multi-frame with controls)
 	series = group_dicoms_by_series(items)
 	if series:
-		st.subheader("DICOM Series Preview")
-		uid_list = list(series.keys())
-		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
-		sel_uid = st.selectbox("Select series", options=uid_list, format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}")
-		s = series[sel_uid]
-		st.markdown(f"**Now viewing patient:** {s['patient_name']} ({s['patient_id']}) — {s['study_desc']}")
-		frames: List[np.ndarray] = s["frames"]  # type: ignore
-		if frames:
-			# Frame state keys
-			frame_key = f"frame_{sel_uid}"
-			pending_key = f"frame_pending_{sel_uid}"
-			default_frame = 1
-			# Initialize and apply any pending navigation BEFORE slider is created
-			if frame_key not in st.session_state:
-				st.session_state[frame_key] = default_frame
-			if pending_key in st.session_state:
-				st.session_state[frame_key] = int(st.session_state[pending_key])
-				del st.session_state[pending_key]
-
-			series_label = f"{s['modality']} - {s['series_desc']} (frames: {len(frames)})"  # type: ignore
-			st.markdown(f"**{series_label}**")
-			# Controls
-			col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4, col_ctrl5 = st.columns([2, 1, 1, 1, 1])
-			with col_ctrl1:
-				st.slider("Frame", min_value=1, max_value=len(frames), key=frame_key)
-			with col_ctrl2:
-				ww = st.number_input("WW", value=float(255), key=f"ww_{sel_uid}")
-			with col_ctrl3:
-				wl = st.number_input("WL", value=float(128), key=f"wl_{sel_uid}")
-			with col_ctrl4:
-				zoom = st.slider("Zoom %", min_value=50, max_value=300, value=100, step=10, key=f"zoom_{sel_uid}")
-			with col_ctrl5:
-				fps = st.slider("FPS", min_value=1, max_value=30, value=8, key=f"fps_{sel_uid}")
-
-			# Read current frame index from state
-			idx = int(st.session_state.get(frame_key, default_frame))
-
-			# Play/Pause & step (update PENDING state; slider will consume next run)
-			col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
-			if col_btn1.button("Prev", key=f"prev_{sel_uid}"):
-				new_idx = idx - 1 if idx > 1 else len(frames)
-				st.session_state[pending_key] = new_idx
-				st.rerun()
-			play_state_key = f"play_{sel_uid}"
-			playing = st.session_state.get(play_state_key, False)
-			if col_btn2.toggle("Play", value=playing, key=play_state_key):
-				playing = True
-			else:
-				playing = False
-			if col_btn3.button("Next", key=f"next_{sel_uid}"):
-				new_idx = idx + 1 if idx < len(frames) else 1
-				st.session_state[pending_key] = new_idx
-				st.rerun()
-
-			# Show selected frame
-			scale = (zoom / 100.0)
-			frame_img = Image.fromarray(normalize_to_uint8(frames[idx - 1], ww=ww, wl=wl))
-			st.image(frame_img, caption=f"Frame {idx}/{len(frames)} — Patient: {s['patient_name']}", width=int(preview_width * scale))
-
-			# 2x2 mosaic around current frame
-			mosaic_cols = st.columns(2)
-			offsets = [-len(frames)//6, 0, len(frames)//6, len(frames)//3]
-			positions = [min(max((idx - 1) + off, 0), len(frames) - 1) for off in offsets]
-			mosaic_imgs = [Image.fromarray(normalize_to_uint8(frames[p], ww=ww, wl=wl)) for p in positions]
-			with mosaic_cols[0]:
-				st.image(mosaic_imgs[0], caption=f"IM: {positions[0]+1}/{len(frames)}", width=mosaic_width)
-				st.image(mosaic_imgs[1], caption=f"IM: {positions[1]+1}/{len(frames)}", width=mosaic_width)
-			with mosaic_cols[1]:
-				st.image(mosaic_imgs[2], caption=f"IM: {positions[2]+1}/{len(frames)}", width=mosaic_width)
-				st.image(mosaic_imgs[3], caption=f"IM: {positions[3]+1}/{len(frames)}", width=mosaic_width)
-
-			# Cine playback loop (schedule next frame via pending key)
-			if playing:
-				time.sleep(1.0 / float(max(1, fps)))
-				new_idx = idx + 1 if idx < len(frames) else 1
-				st.session_state[pending_key] = new_idx
-				st.rerun()
-
 		# -------------------------------
 		# Multi-select grid view
 		# -------------------------------
 		st.subheader("DICOM Grid View (Multi-select)")
+		uid_list = list(series.keys())
+		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		grid_selection = st.multiselect(
 			"Select series for grid",
 			options=uid_list,
@@ -339,59 +263,6 @@ def main():
 					scale = (g_zoom / 100.0)
 					caption = f"{gs['modality']} — {gs['series_desc']} | IM: {local_idx+1}/{len(g_frames)} | {gs['patient_name']}"
 					st.image(img, caption=caption, width=int(mosaic_width * scale))
-
-	# Group previews for non-DICOM files
-	img_cols = st.columns(3)
-	img_idx = 0
-
-	for name, data in items:
-		placeholder = st.container()
-		with placeholder:
-			st.markdown(f"**{name}**")
-			# Direct image
-			if is_image(name):
-				try:
-					img = Image.open(io.BytesIO(data))
-					st.image(img, width=preview_width)
-				except Exception as e:
-					st.warning(f"Image failed to load: {e}")
-				continue
-
-			# PDF preview
-			if is_pdf(name):
-				try:
-					pages = convert_from_bytes(data, first_page=1, last_page=1)
-					if pages:
-						st.image(pages[0], caption="First page", width=preview_width)
-					else:
-						st.info("PDF has no renderable pages.")
-				except Exception as e:
-					st.warning(f"PDF preview failed: {e}")
-				continue
-
-			# Try DICOM
-			ds, pix = try_load_dicom(name, data)
-			if ds is not None:
-				# Basic header table
-				patient = format_patient_name(getattr(ds, "PatientName", "?"))
-				study_desc = getattr(ds, "StudyDescription", "")
-				series_desc = getattr(ds, "SeriesDescription", "")
-				st.write({
-					"PatientName": str(patient),
-					"Modality": getattr(ds, "Modality", ""),
-					"StudyDescription": str(study_desc),
-					"SeriesDescription": str(series_desc),
-					"Rows": getattr(ds, "Rows", ""),
-					"Columns": getattr(ds, "Columns", ""),
-				})
-				if pix is not None:
-					st.image(pix, width=preview_width)
-				else:
-					st.info("No pixel data to display.")
-				continue
-
-			# Fallback: offer download
-			st.download_button("Download file", data=data, file_name=os.path.basename(name))
 
 	st.success("Done.")
 
