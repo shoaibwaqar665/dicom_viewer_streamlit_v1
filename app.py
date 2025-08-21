@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import pydicom
+from pydicom.valuerep import PersonName
 from PIL import Image
 import streamlit as st
 from pdf2image import convert_from_bytes
@@ -13,6 +14,25 @@ import time
 # -------------------------------
 # Helpers
 # -------------------------------
+
+
+def format_patient_name(pn_obj) -> str:
+	# Convert DICOM PN (with ^ separators) into a friendly display name
+	try:
+		pn = PersonName(str(pn_obj).split('=')[0])  # use alphabetic representation if multi-rep
+		parts = []
+		if getattr(pn, 'given_name', None):
+			parts.append(pn.given_name)
+		if getattr(pn, 'middle_name', None):
+			parts.append(pn.middle_name)
+		if getattr(pn, 'family_name', None):
+			parts.append(pn.family_name)
+		if getattr(pn, 'name_suffix', None):
+			parts.append(pn.name_suffix)
+		name = " ".join(p for p in parts if p)
+		return name or str(pn_obj).replace('^', ' ').strip()
+	except Exception:
+		return str(pn_obj).replace('^', ' ').strip()
 
 
 def load_zip(file_bytes: bytes, name_prefix: str = "") -> List[Tuple[str, bytes]]:
@@ -139,7 +159,7 @@ def group_dicoms_by_series(items: List[Tuple[str, bytes]]):
 			"modality": str(getattr(ds, "Modality", "")),
 			"frames": [],
 			"examples": [],
-			"patient_name": str(getattr(ds, "PatientName", "")),
+			"patient_name": format_patient_name(getattr(ds, "PatientName", "")),
 			"patient_id": str(getattr(ds, "PatientID", "")),
 			"study_desc": str(getattr(ds, "StudyDescription", "")),
 		})
@@ -353,7 +373,7 @@ def main():
 			ds, pix = try_load_dicom(name, data)
 			if ds is not None:
 				# Basic header table
-				patient = getattr(ds, "PatientName", "?")
+				patient = format_patient_name(getattr(ds, "PatientName", "?"))
 				study_desc = getattr(ds, "StudyDescription", "")
 				series_desc = getattr(ds, "SeriesDescription", "")
 				st.write({
