@@ -194,77 +194,152 @@ def group_dicoms_by_series(items: List[Tuple[str, bytes]]):
 
 
 def main():
-	st.set_page_config(page_title="ZIP Viewer", layout="wide")
-	st.title("ZIP Viewer for Imaging Files")
-	st.caption("Upload one or more .zip files; we will preview images, PDFs (first page), and DICOMs.")
-
-	uploaded_files = st.file_uploader("Upload ZIP file(s)", type=["zip"], accept_multiple_files=True)
+	st.set_page_config(
+		page_title="DICOM Grid Viewer", 
+		layout="wide",
+		initial_sidebar_state="collapsed"
+	)
+	
+	# Enhanced header
+	st.title("DICOM Grid Viewer")
+	st.caption("Advanced multi-series DICOM visualization with synchronized controls")
+	
+	# File upload section
+	uploaded_files = st.file_uploader(
+		"Choose ZIP file(s) to analyze", 
+		type=["zip"], 
+		accept_multiple_files=True,
+		help="Select one or more ZIP files containing DICOM data"
+	)
 	if not uploaded_files:
-		st.info("Select one or more .zip files to begin.")
+		st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
 		return
 
-	with st.spinner("Loading ZIPs..."):
+	# Loading spinner
+	with st.spinner("Processing ZIP files and extracting DICOM data..."):
 		items: List[Tuple[str, bytes]] = []
 		for uf in uploaded_files:
-			# Prefix inner paths with the ZIP filename to avoid collisions and to show provenance
 			zip_items = load_zip(uf.read(), name_prefix=f"{uf.name}/")
 			items.extend(zip_items)
 
-	# Sidebar: file list
-	st.sidebar.header("Files in ZIPs")
-	for name, _ in items:
-		st.sidebar.write(name)
-
-	# Sidebar: display sizing
-	st.sidebar.subheader("Display")
-	preview_width = st.sidebar.slider("Preview width (px)", min_value=128, max_value=800, value=400, step=16)
-	mosaic_width = st.sidebar.slider("Mosaic tile width (px)", min_value=128, max_value=600, value=300, step=16)
-
-	# DICOM series preview (patient + multi-frame with controls)
+	# DICOM processing and grid view
 	series = group_dicoms_by_series(items)
 	if series:
-		# -------------------------------
-		# Multi-select grid view
-		# -------------------------------
-		st.subheader("DICOM Grid View (Multi-select)")
+		st.subheader("DICOM Series Analysis")
+		st.success(f"**{len(series)} DICOM series** detected and processed successfully!")
+		
+		# Grid view section
+		st.subheader("Multi-Series Grid View")
+		
 		uid_list = list(series.keys())
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
-		grid_selection = st.multiselect(
-			"Select series for grid",
-			options=uid_list,
-			format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}"
-		)
+		
+		# Series selection
+		col1, col2 = st.columns([3, 1])
+		with col1:
+			grid_selection = st.multiselect(
+				"Select series for grid display",
+				options=uid_list,
+				format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}",
+				help="Choose which DICOM series to display in the grid"
+			)
+		with col2:
+			if grid_selection:
+				st.metric("Selected Series", len(grid_selection))
+		
 		if grid_selection:
-			# Grid-level controls (shared WW/WL/Zoom/Columns)
-			col_gc1, col_gc2, col_gc3 = st.columns([1, 1, 1])
+			# Control panel
+			st.markdown("**Grid Controls**")
+			
+			# Control columns
+			col_gc1, col_gc2, col_gc3, col_gc4 = st.columns([2, 1, 1, 1])
 			with col_gc1:
-				g_ww = st.number_input("WW", value=float(255), key="grid_ww")
+				g_ww = st.number_input(
+					"Window Width (WW)", 
+					value=float(255), 
+					key="grid_ww",
+					help="Adjust image contrast"
+				)
 			with col_gc2:
-				g_wl = st.number_input("WL", value=float(128), key="grid_wl")
+				g_wl = st.number_input(
+					"Window Level (WL)", 
+					value=float(128), 
+					key="grid_wl",
+					help="Adjust image brightness"
+				)
 			with col_gc3:
-				g_zoom = st.slider("Zoom %", min_value=50, max_value=300, value=100, step=10, key="grid_zoom")
-			num_cols = st.slider("Columns", min_value=1, max_value=4, value=2, key="grid_cols")
+				g_zoom = st.slider(
+					"Zoom (%)", 
+					min_value=50, 
+					max_value=300, 
+					value=100, 
+					step=10, 
+					key="grid_zoom",
+					help="Zoom level for all grid images"
+				)
+			with col_gc4:
+				num_cols = st.slider(
+					"Columns", 
+					min_value=1, 
+					max_value=4, 
+					value=2, 
+					key="grid_cols",
+					help="Number of columns in the grid layout"
+				)
 
-			# Render grid with per-panel sliders
+			# Grid display
+			st.markdown("**Series Grid Display**")
+			
+			# Create grid columns
 			grid_cols = st.columns(num_cols)
+			
+			# Render each selected series
 			for i, uid in enumerate(grid_selection):
 				gs = series[uid]
 				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
+				
 				if not g_frames:
 					continue
+				
 				panel_key = f"grid_frame_{uid}"
 				if panel_key not in st.session_state:
 					st.session_state[panel_key] = 1
+				
 				with grid_cols[i % num_cols]:
-					# Per-panel frame slider
-					st.slider("Frame", min_value=1, max_value=len(g_frames), key=panel_key)
+					# Series info header
+					st.markdown(f"**{gs['modality']}** — {gs['series_desc']}")
+					st.caption(f"{gs['patient_name']} | {len(g_frames)} frames")
+					
+					# Frame slider
+					st.slider(
+						f"Frame {gs['modality']}", 
+						min_value=1, 
+						max_value=len(g_frames), 
+						key=panel_key,
+						help=f"Navigate through {len(g_frames)} frames"
+					)
+					
+					# Image display
 					local_idx = int(st.session_state.get(panel_key, 1)) - 1
 					img = Image.fromarray(normalize_to_uint8(g_frames[local_idx], ww=g_ww, wl=g_wl))
 					scale = (g_zoom / 100.0)
-					caption = f"{gs['modality']} — {gs['series_desc']} | IM: {local_idx+1}/{len(g_frames)} | {gs['patient_name']}"
-					st.image(img, caption=caption, width=int(mosaic_width * scale))
+					
+					# Caption
+					caption = f"Frame {local_idx+1}/{len(g_frames)} | Series {i+1}"
+					
+					st.image(
+						img, 
+						caption=caption, 
+						width=400,
+						use_container_width=True
+					)
+			
+			# Grid summary
+			st.success(f"Grid displaying **{len(grid_selection)} series** with synchronized controls")
+	else:
+		st.warning("**No DICOM series found** in the uploaded files. Please ensure your ZIP files contain valid DICOM data.")
 
-	st.success("Done.")
+	st.success("**Analysis complete!** Your DICOM grid is ready for review.")
 
 
 if __name__ == "__main__":
