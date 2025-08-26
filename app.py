@@ -203,14 +203,50 @@ def build_series_from_zip_blobs(zips: List[Tuple[str, bytes]]):
 	return group_dicoms_by_series(items)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=5000)
+def pre_render_all_frames(frames: List[np.ndarray], ww: float, wl: float, zoom: int) -> List[Image.Image]:
+	"""Pre-render all frames for a series to eliminate jitter during slider movement"""
+	rendered_frames = []
+	for frame in frames:
+		img = pre_render_frame(frame, ww, wl, zoom)
+		rendered_frames.append(img)
+	return rendered_frames
+
+
+@st.cache_data(show_spinner=False, max_entries=2000)
 def pre_render_frame(frame: np.ndarray, ww: float, wl: float, zoom: int) -> Image.Image:
 	"""Pre-render frame with specific window settings and cache result"""
-	img = Image.fromarray(normalize_to_uint8(frame, ww=ww, wl=wl))
+	# Use faster normalization for real-time updates
+	arr = frame.astype(np.float32)
+	
+	# Optimize window/level calculation for ww=1, wl=1 case
+	if ww == 1 and wl == 1:
+		# Fast path for default settings - use full range
+		arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)
+	else:
+		# Custom window/level
+		low = wl - ww / 2.0
+		high = wl + ww / 2.0
+		arr = np.clip(arr, low, high)
+		if high - low > 0:
+			arr = (arr - low) / (high - low)
+		else:
+			arr = arr - low
+	
+	arr = (arr * 255.0).astype(np.uint8)
+	img = Image.fromarray(arr)
+	
+	# Apply zoom if needed
 	if zoom != 100:
 		scale = zoom / 100.0
 		new_size = (int(img.width * scale), int(img.height * scale))
 		img = img.resize(new_size, Image.Resampling.LANCZOS)
+	
+	# Limit image size for faster rendering (max 400x400)
+	max_size = 400
+	if img.width > max_size or img.height > max_size:
+		img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+	
 	return img
 
 
@@ -232,7 +268,7 @@ def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: floa
 	st.markdown(f"**{gs['modality']}** — {gs['series_desc']}")
 	st.caption(f"{gs['patient_name']} | {num_frames} frames")
 
-	# Frame slider with debounced updates
+	# Frame slider with real-time updates
 	current_frame = st.slider(
 		f"Frame {gs['modality']}",
 		min_value=1,
@@ -241,41 +277,14 @@ def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: floa
 		help=f"Navigate through {num_frames} frames"
 	)
 
-	# Get frame data
+	# Get pre-rendered frames for instant display
 	frames: List[np.ndarray] = gs["frames"]  # type: ignore
+	rendered_frames = pre_render_all_frames(frames, g_ww, g_wl, g_zoom)
 	frame_idx = current_frame - 1
 	
-	# Create cache key for current settings
-	settings_key = f"{panel_key}_ww{g_ww}_wl{g_wl}_zoom{g_zoom}"
-	
-	# Check if we should show full resolution or thumbnail
-	show_full_res = st.session_state.get(f"{panel_key}_show_full", False)
-	last_interaction = st.session_state.get(f"{panel_key}_last_interaction", 0)
-	current_time = time.time()
-	
-	# If settings changed recently, show thumbnail for smooth interaction
-	if current_time - last_interaction < 0.5:  # 500ms debounce
-		show_full_res = False
-		st.session_state[f"{panel_key}_show_full"] = False
-	else:
-		show_full_res = True
-		st.session_state[f"{panel_key}_show_full"] = True
-	
-	# Update interaction timestamp when settings change
-	if st.session_state.get(f"{panel_key}_last_settings", "") != settings_key:
-		st.session_state[f"{panel_key}_last_settings"] = settings_key
-		st.session_state[f"{panel_key}_last_interaction"] = current_time
-		st.session_state[f"{panel_key}_show_full"] = False
-	
-	# Show appropriate image quality
-	if show_full_res:
-		# Full resolution with zoom
-		img = pre_render_frame(frames[frame_idx], g_ww, g_wl, g_zoom)
-		st.image(img, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1} (Full Res)", use_container_width=True)
-	else:
-		# Fast thumbnail for smooth interaction
-		thumbnail = create_thumbnail(frames[frame_idx], g_ww, g_wl)
-		st.image(thumbnail, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1} (Preview)", use_container_width=True)
+	# Show pre-rendered image instantly (no processing delay)
+	img = rendered_frames[frame_idx]
+	st.image(img, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1}", use_container_width=True)
 
 
 def main():
@@ -336,14 +345,14 @@ def main():
 			with col_gc1:
 				g_ww = st.number_input(
 					"Window Width (WW)", 
-					value=float(255), 
+					value=float(1), 
 					key="grid_ww",
 					help="Adjust image contrast"
 				)
 			with col_gc2:
 				g_wl = st.number_input(
 					"Window Level (WL)", 
-					value=float(128), 
+					value=float(1), 
 					key="grid_wl",
 					help="Adjust image brightness"
 				)
@@ -362,7 +371,7 @@ def main():
 					"Columns", 
 					min_value=1, 
 					max_value=4, 
-					value=2, 
+					value=4, 
 					key="grid_cols",
 					help="Number of columns in the grid layout"
 				)
