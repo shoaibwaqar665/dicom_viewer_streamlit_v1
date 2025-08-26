@@ -10,6 +10,7 @@ from PIL import Image
 import streamlit as st
 from pdf2image import convert_from_bytes
 import time
+from functools import lru_cache
 
 # -------------------------------
 # Helpers
@@ -193,6 +194,90 @@ def group_dicoms_by_series(items: List[Tuple[str, bytes]]):
 	return series
 
 
+@st.cache_data(show_spinner=False)
+def build_series_from_zip_blobs(zips: List[Tuple[str, bytes]]):
+	# zips: list of (filename, bytes)
+	items: List[Tuple[str, bytes]] = []
+	for name, file_bytes in zips:
+		items.extend(load_zip(file_bytes, name_prefix=f"{name}/"))
+	return group_dicoms_by_series(items)
+
+
+@st.cache_data(show_spinner=False)
+def pre_render_frame(frame: np.ndarray, ww: float, wl: float, zoom: int) -> Image.Image:
+	"""Pre-render frame with specific window settings and cache result"""
+	img = Image.fromarray(normalize_to_uint8(frame, ww=ww, wl=wl))
+	if zoom != 100:
+		scale = zoom / 100.0
+		new_size = (int(img.width * scale), int(img.height * scale))
+		img = img.resize(new_size, Image.Resampling.LANCZOS)
+	return img
+
+
+@st.cache_data(show_spinner=False)
+def create_thumbnail(frame: np.ndarray, ww: float, wl: float, max_size: int = 200) -> Image.Image:
+	"""Create fast thumbnail for smooth dragging"""
+	img = Image.fromarray(normalize_to_uint8(frame, ww=ww, wl=wl))
+	img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
+	return img
+
+
+@st.fragment
+def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: float, g_zoom: int, panel_index: int, num_frames: int, num_cols: int):
+	panel_key = f"grid_frame_{uid}"
+	if panel_key not in st.session_state:
+		st.session_state[panel_key] = 1
+
+	# Series info header
+	st.markdown(f"**{gs['modality']}** — {gs['series_desc']}")
+	st.caption(f"{gs['patient_name']} | {num_frames} frames")
+
+	# Frame slider with debounced updates
+	current_frame = st.slider(
+		f"Frame {gs['modality']}",
+		min_value=1,
+		max_value=num_frames,
+		key=panel_key,
+		help=f"Navigate through {num_frames} frames"
+	)
+
+	# Get frame data
+	frames: List[np.ndarray] = gs["frames"]  # type: ignore
+	frame_idx = current_frame - 1
+	
+	# Create cache key for current settings
+	settings_key = f"{panel_key}_ww{g_ww}_wl{g_wl}_zoom{g_zoom}"
+	
+	# Check if we should show full resolution or thumbnail
+	show_full_res = st.session_state.get(f"{panel_key}_show_full", False)
+	last_interaction = st.session_state.get(f"{panel_key}_last_interaction", 0)
+	current_time = time.time()
+	
+	# If settings changed recently, show thumbnail for smooth interaction
+	if current_time - last_interaction < 0.5:  # 500ms debounce
+		show_full_res = False
+		st.session_state[f"{panel_key}_show_full"] = False
+	else:
+		show_full_res = True
+		st.session_state[f"{panel_key}_show_full"] = True
+	
+	# Update interaction timestamp when settings change
+	if st.session_state.get(f"{panel_key}_last_settings", "") != settings_key:
+		st.session_state[f"{panel_key}_last_settings"] = settings_key
+		st.session_state[f"{panel_key}_last_interaction"] = current_time
+		st.session_state[f"{panel_key}_show_full"] = False
+	
+	# Show appropriate image quality
+	if show_full_res:
+		# Full resolution with zoom
+		img = pre_render_frame(frames[frame_idx], g_ww, g_wl, g_zoom)
+		st.image(img, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1} (Full Res)", use_container_width=True)
+	else:
+		# Fast thumbnail for smooth interaction
+		thumbnail = create_thumbnail(frames[frame_idx], g_ww, g_wl)
+		st.image(thumbnail, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1} (Preview)", use_container_width=True)
+
+
 def main():
 	st.set_page_config(
 		page_title="DICOM Grid Viewer", 
@@ -215,15 +300,10 @@ def main():
 		st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
 		return
 
-	# Loading spinner
+	# Loading spinner + cached processing
 	with st.spinner("Processing ZIP files and extracting DICOM data..."):
-		items: List[Tuple[str, bytes]] = []
-		for uf in uploaded_files:
-			zip_items = load_zip(uf.read(), name_prefix=f"{uf.name}/")
-			items.extend(zip_items)
-
-	# DICOM processing and grid view
-	series = group_dicoms_by_series(items)
+		zip_blobs: List[Tuple[str, bytes]] = [(uf.name, uf.read()) for uf in uploaded_files]
+		series = build_series_from_zip_blobs(zip_blobs)
 	if series:
 		st.subheader("DICOM Series Analysis")
 		st.success(f"**{len(series)} DICOM series** detected and processed successfully!")
@@ -293,46 +373,14 @@ def main():
 			# Create grid columns
 			grid_cols = st.columns(num_cols)
 			
-			# Render each selected series
+			# Render each selected series using isolated fragments
 			for i, uid in enumerate(grid_selection):
 				gs = series[uid]
 				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
-				
 				if not g_frames:
 					continue
-				
-				panel_key = f"grid_frame_{uid}"
-				if panel_key not in st.session_state:
-					st.session_state[panel_key] = 1
-				
 				with grid_cols[i % num_cols]:
-					# Series info header
-					st.markdown(f"**{gs['modality']}** — {gs['series_desc']}")
-					st.caption(f"{gs['patient_name']} | {len(g_frames)} frames")
-					
-					# Frame slider
-					st.slider(
-						f"Frame {gs['modality']}", 
-						min_value=1, 
-						max_value=len(g_frames), 
-						key=panel_key,
-						help=f"Navigate through {len(g_frames)} frames"
-					)
-					
-					# Image display
-					local_idx = int(st.session_state.get(panel_key, 1)) - 1
-					img = Image.fromarray(normalize_to_uint8(g_frames[local_idx], ww=g_ww, wl=g_wl))
-					scale = (g_zoom / 100.0)
-					
-					# Caption
-					caption = f"Frame {local_idx+1}/{len(g_frames)} | Series {i+1}"
-					
-					st.image(
-						img, 
-						caption=caption, 
-						width=400,
-						use_container_width=True
-					)
+					render_series_panel(uid, gs, g_ww, g_wl, g_zoom, i, len(g_frames), num_cols)
 			
 			# Grid summary
 			st.success(f"Grid displaying **{len(grid_selection)} series** with synchronized controls")
