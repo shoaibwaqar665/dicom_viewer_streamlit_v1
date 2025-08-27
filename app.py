@@ -266,12 +266,81 @@ def preload_adjacent_frames(frames: List[np.ndarray], current_idx: int, ww: floa
 	return preloaded
 
 
+@st.cache_data(show_spinner=False, max_entries=100)
+def sample_frames_for_large_series(frames: List[np.ndarray], max_frames: int = 20) -> List[np.ndarray]:
+	"""Sample frames from large series to create a manageable subset"""
+	if len(frames) <= max_frames:
+		return frames
+	
+	# Calculate sampling interval
+	interval = len(frames) // max_frames
+	
+	# Sample frames evenly across the series
+	sampled = []
+	for i in range(0, len(frames), interval):
+		sampled.append(frames[i])
+		if len(sampled) >= max_frames:
+			break
+	
+	# Always include the last frame
+	if sampled[-1] is not frames[-1]:
+		sampled[-1] = frames[-1]
+	
+	return sampled
+
+
+@st.cache_data(show_spinner=False, max_entries=200)
+def create_compact_thumbnail(frame: np.ndarray, max_size: int = 150) -> Image.Image:
+	"""Create very small thumbnail for compact large series display"""
+	# Fast normalization
+	arr = frame.astype(np.float32)
+	arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)
+	arr = (arr * 255.0).astype(np.uint8)
+	img = Image.fromarray(arr)
+	img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
+	return img
+
+
 @st.cache_data(show_spinner=False)
 def create_thumbnail(frame: np.ndarray, ww: float, wl: float, max_size: int = 200) -> Image.Image:
 	"""Create fast thumbnail for smooth dragging"""
 	img = Image.fromarray(normalize_to_uint8(frame, ww=ww, wl=wl))
 	img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
 	return img
+
+
+@st.fragment
+def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: int, num_frames: int):
+	"""Compact viewer for large series (>65 frames)"""
+	panel_key = f"compact_frame_{uid}"
+	if panel_key not in st.session_state:
+		st.session_state[panel_key] = 1
+
+	# Series info header with compact indicator
+	st.markdown(f"**{gs['modality']}** — {gs['series_desc']} 📊")
+	st.caption(f"{gs['patient_name']} | {num_frames} frames (Compact Mode)")
+
+	# Sample frames for display (max 20 frames)
+	frames: List[np.ndarray] = gs["frames"]  # type: ignore
+	sampled_frames = sample_frames_for_large_series(frames, max_frames=20)
+	
+	# Frame slider for sampled frames
+	current_frame = st.slider(
+		f"Frame {gs['modality']} (Sampled)",
+		min_value=1,
+		max_value=len(sampled_frames),
+		key=panel_key,
+		help=f"Navigate through {len(sampled_frames)} sampled frames from {num_frames} total frames"
+	)
+
+	# Render compact thumbnail
+	frame_idx = current_frame - 1
+	img = create_compact_thumbnail(sampled_frames[frame_idx], max_size=150)
+	
+	# Calculate actual frame number from sampling
+	actual_frame_num = (frame_idx * len(frames)) // len(sampled_frames) + 1
+	
+	st.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", use_container_width=True)
 
 
 @st.fragment
@@ -337,15 +406,16 @@ def main():
 		zip_blobs: List[Tuple[str, bytes]] = [(uf.name, uf.read()) for uf in uploaded_files]
 		all_series = build_series_from_zip_blobs(zip_blobs)
 	
-	# Filter series to only include those with 65 frames or fewer
-	series = {uid: s for uid, s in all_series.items() if len(s.get("frames", [])) <= 65}
+	# Filter to exclude series with exactly 68 frames
+	series = {uid: s for uid, s in all_series.items() if len(s.get("frames", [])) != 68}
 	filtered_count = len(all_series) - len(series)
 	
 	if series:
 		st.subheader("DICOM Series Analysis")
 		st.success(f"**{len(series)} DICOM series** detected and processed successfully!")
 		if filtered_count > 0:
-			st.info(f"ℹ️ **Note:** {filtered_count} series with more than 65 frames have been filtered out to prevent performance issues.")
+			pass
+			# st.info(f"ℹ️ **Note:** {filtered_count} series with exactly 68 frames have been filtered out. Only series with frame counts other than 68 are displayed.")
 		
 		# Grid view section
 		st.subheader("Multi-Series Grid View")
@@ -411,7 +481,7 @@ def main():
 					"Fast Mode", 
 					value=True, 
 					key="performance_mode",
-					help="Enable for smoother scrolling (reduces image quality slightly). Quality mode includes frame preloading like IMAIOS viewer."
+					help="Enable for smoother scrolling (reduces image quality slightly). Quality mode includes frame preloading like IMAIOS viewer. Series with exactly 68 frames are filtered out."
 				)
 
 			# Grid display
@@ -435,7 +505,7 @@ def main():
 	else:
 		st.warning("**No DICOM series found** in the uploaded files. Please ensure your ZIP files contain valid DICOM data.")
 
-	st.success("**Analysis complete!** Your DICOM grid is ready for review.")
+	# st.success("**Analysis complete!** Your DICOM grid is ready for review.")
 
 
 if __name__ == "__main__":
