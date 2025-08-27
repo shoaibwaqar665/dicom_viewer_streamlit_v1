@@ -390,9 +390,9 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	if panel_key not in st.session_state:
 		st.session_state[panel_key] = 1
 
-	# Series info header with compact indicator
-	st.markdown(f"**{gs['modality']}** — {gs['series_desc']} 📊")
-	st.caption(f"{gs['patient_name']} | {num_frames} frames (Compact Mode)")
+	# Series info header
+	st.markdown(f"**{gs['modality']}** — {gs['series_desc']}")
+	st.caption(f"{gs['patient_name']} | {num_frames} frames")
 
 	# Sample frames for display (max 20 frames)
 	frames: List[np.ndarray] = gs["frames"]  # type: ignore
@@ -400,7 +400,7 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	
 	# Frame slider for sampled frames
 	current_frame = st.slider(
-		f"Frame {gs['modality']} (Sampled)",
+		f"Frame {gs['modality']}",
 		min_value=1,
 		max_value=len(sampled_frames),
 		key=panel_key,
@@ -417,28 +417,26 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	# Calculate actual frame number from sampling
 	actual_frame_num = (frame_idx * len(frames)) // len(sampled_frames) + 1
 	
-	image_placeholder.image(instant_img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1} (Loading...)", width=400)
+	image_placeholder.image(instant_img, caption=f"Frame {actual_frame_num}/{num_frames} | Series {panel_index+1}", width=400)
 	
 	# Then load the full-quality compact thumbnail
 	img = create_compact_thumbnail(sampled_frames[frame_idx], max_size=150)
-	image_placeholder.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", width=400)
+	image_placeholder.image(img, caption=f"Frame {actual_frame_num}/{num_frames} | Series {panel_index+1}", width=400)
 
 
 def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List[str], num_cols: int, performance_mode: bool):
-	"""Create a responsive table-based grid layout with adaptive image sizing"""
-	# Calculate number of rows needed
+	"""Create a professional grid layout with clean spacing"""
 	num_series = len(grid_selection)
 	num_rows = (num_series + num_cols - 1) // num_cols
 	
-	# Create table rows with proper spacing
+	# Create professional grid rows
 	for row in range(num_rows):
-		# For single column layout, center the content
 		if num_cols == 1:
-			cols = st.columns([1, 2, 1], gap="medium")  # Left spacer, content, right spacer
-			content_col = 1  # Use middle column for content
+			cols = st.columns([1, 3, 1], gap="large")
+			content_col = 1
 		else:
-			cols = st.columns(num_cols, gap="medium")  # Add gap between columns
-			content_col = 0  # Start from first column
+			cols = st.columns(num_cols, gap="large")
+			content_col = 0
 		
 		for col in range(num_cols):
 			series_idx = row * num_cols + col
@@ -447,13 +445,8 @@ def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List
 				gs = series[uid]
 				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
 				if g_frames:
-					# Use appropriate column based on layout
-					if num_cols == 1:
-						display_col = content_col  # Always use middle column for single column
-					else:
-						display_col = content_col + col  # Use sequential columns for multi-column
+					display_col = content_col if num_cols == 1 else content_col + col
 					with cols[display_col]:
-						# Add container with spacing
 						with st.container():
 							render_compact_series_panel(uid, gs, series_idx, len(g_frames), performance_mode, num_cols)
 
@@ -464,12 +457,12 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	if panel_key not in st.session_state:
 		st.session_state[panel_key] = 1
 
-	# Ultra-compact series info
-	st.markdown(f"**{gs['modality']}** {gs['series_desc'][:20]}{'...' if len(gs['series_desc']) > 20 else ''}")
-	st.caption(f"{gs['patient_name'][:15]}{'...' if len(gs['patient_name']) > 15 else ''} ({num_frames})")
+	# Professional series info
+	st.markdown(f"**{gs['modality']}** {gs['series_desc'][:25]}{'...' if len(gs['series_desc']) > 25 else ''}")
+	st.caption(f"{gs['patient_name'][:20]}{'...' if len(gs['patient_name']) > 20 else ''} ({num_frames} frames)")
 
-	# Compact WW/WL controls in single row
-	col_ww, col_wl, col_frame = st.columns([1, 1, 1])
+	# Professional controls layout
+	col_ww, col_wl, col_frame = st.columns([1, 1, 2])
 	with col_ww:
 		panel_ww = st.number_input(
 			"WW", 
@@ -513,7 +506,7 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	# Display the instant thumbnail immediately
 	image_width = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
 	image_placeholder = st.empty()
-	image_placeholder.image(instant_img, caption=f"{current_frame}/{num_frames} (Loading...)", width=image_width)
+	image_placeholder.image(instant_img, caption=f"{current_frame}/{num_frames}", width=image_width)
 	
 	# Pre-load adjacent frames for smoother scrolling (background task)
 	preload_instant_thumbnails(frames, frame_idx, max_size, cache_range=5)
@@ -533,102 +526,201 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 
 def main():
 	st.set_page_config(
-		page_title="DICOM Grid Viewer", 
+		page_title="DICOM Viewer", 
 		layout="wide",
 		initial_sidebar_state="collapsed"
 	)
 	
-	# Add custom CSS for forced wide mode and responsive layout
+	# Professional dark theme CSS
 	st.markdown("""
 	<style>
-	/* Force wide mode layout */
+	/* Dark theme base */
+	.stApp {
+		background-color: #0e1117;
+		color: #fafafa;
+	}
+	
+	/* Main container */
 	.main .block-container {
 		max-width: 100% !important;
-		padding-top: 0.5rem;
-		padding-bottom: 1rem;
-		padding-left: 2rem;
-		padding-right: 2rem;
+		padding: 1rem 2rem;
+		background-color: #0e1117;
 	}
-	/* Ensure full width utilization */
-	.stApp > div {
-		max-width: 100% !important;
-	}
-	.stImage > img {
-		border-radius: 0.5rem;
-	}
-	.element-container {
-		margin-bottom: 0.5rem;
-	}
-	/* Prevent grid overlap with better spacing */
-	.stImage {
-		margin-bottom: 1rem !important;
-	}
-	/* Add spacing between grid items */
-	[data-testid="column"] {
-		padding: 0.5rem !important;
-	}
-	/* Responsive file uploader */
-	.stFileUploader {
-		width: 100% !important;
-		max-width: 600px !important;
-	}
-	.stFileUploader > div {
-		height: 80px !important;
-	}
-	.stFileUploader > div > div {
-		height: 60px !important;
-	}
-	/* Responsive grid adjustments */
-	@media (max-width: 768px) {
-		.stFileUploader {
-			width: 100% !important;
-			max-width: 100% !important;
-		}
-		.stFileUploader > div {
-			height: 100px !important;
-		}
-		.stFileUploader > div > div {
-			height: 80px !important;
-		}
-		/* Adjust padding for narrow screens */
-		.main .block-container {
-			padding-left: 0.5rem !important;
-			padding-right: 0.5rem !important;
-		}
-	}
-	/* Ensure images don't overflow on narrow screens */
-	.stImage > img {
-		max-width: 100% !important;
-		height: auto !important;
-	}
-	/* Additional spacing for compact mode */
-	.stContainer {
-		margin-bottom: 1rem !important;
-		padding: 0.5rem !important;
-	}
-	/* Ensure proper spacing between grid elements */
-	div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-		margin-bottom: 1rem !important;
-	}
-	/* Compact WW/WL controls styling */
-	.stNumberInput > div > div > input {
-		font-size: 0.8rem !important;
-		padding: 0.25rem !important;
-		height: 2rem !important;
-	}
-	.stNumberInput label {
-		font-size: 0.8rem !important;
-		font-weight: bold !important;
-	}
-	/* Hide settings menu */
+	
+	/* Hide Streamlit branding */
 	#MainMenu {visibility: hidden;}
 	footer {visibility: hidden;}
 	header {visibility: hidden;}
+	
+	/* Professional typography */
+	h1, h2, h3, h4, h5, h6 {
+		color: #ffffff !important;
+		font-weight: 600;
+	}
+	
+	/* Dark theme for widgets */
+	.stSelectbox > div > div {
+		background-color: #262730;
+		border: 1px solid #3d4043;
+		color: #fafafa;
+	}
+	
+	.stNumberInput > div > div > input {
+		background-color: #262730;
+		border: 1px solid #3d4043;
+		color: #fafafa;
+		font-size: 0.9rem;
+		padding: 0.4rem;
+		height: 2.2rem;
+	}
+	
+	.stSlider > div > div > div > div {
+		background-color: #262730;
+	}
+	
+	
+	/* File uploader styling */
+	.stFileUploader {
+		background-color: #262730;
+		border: 2px dashed #3d4043;
+		border-radius: 8px;
+		padding: 1rem;
+	}
+	
+	.stFileUploader > div {
+		background-color: transparent;
+		border: none;
+	}
+	
+	/* Image containers */
+	.stImage > img {
+		border-radius: 6px;
+		border: 1px solid #3d4043;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	}
+	
+	/* Professional grid layout */
+	[data-testid="column"] {
+		padding: 1rem;
+		background-color: #1a1b23;
+		border-radius: 8px;
+		margin: 0.75rem;
+		border: 1px solid #2d2e36;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	}
+	
+	/* Compact controls */
+	.element-container {
+		margin-bottom: 0.5rem;
+	}
+	
+	/* Professional spacing */
+	.stContainer {
+		margin-bottom: 0.75rem;
+		padding: 0.5rem;
+		background-color: #1a1b23;
+		border-radius: 6px;
+		border: 1px solid #2d2e36;
+	}
+	
+	/* Status messages */
+	.stSuccess {
+		background-color: #1e3a2e;
+		border: 1px solid #2d5a3d;
+		color: #4ade80;
+	}
+	
+	.stWarning {
+		background-color: #3a2e1e;
+		border: 1px solid #5a3d2d;
+		color: #fbbf24;
+	}
+	
+	.stError {
+		background-color: #3a1e1e;
+		border: 1px solid #5a2d2d;
+		color: #f87171;
+	}
+	
+	.stInfo {
+		background-color: #1e2a3a;
+		border: 1px solid #2d3d5a;
+		color: #60a5fa;
+	}
+	
+	/* Responsive design */
+	@media (max-width: 768px) {
+		.main .block-container {
+			padding: 0.5rem 1rem;
+		}
+		[data-testid="column"] {
+			padding: 0.5rem;
+			margin: 0.25rem;
+		}
+	}
+	
+	/* Professional button styling */
+	.stButton > button {
+		background-color: #00d4aa;
+		color: #0e1117;
+		border: none;
+		border-radius: 6px;
+		font-weight: 600;
+		transition: all 0.2s ease;
+	}
+	
+	.stButton > button:hover {
+		background-color: #00b894;
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3);
+	}
+	
+	/* Caption styling */
+	.stImage > div {
+		color: #9ca3af;
+		font-size: 0.85rem;
+		text-align: center;
+		margin-top: 0.5rem;
+	}
+	
+	/* Multiselect styling */
+	.stMultiSelect > div > div {
+		background-color: #262730;
+		border: 1px solid #3d4043;
+	}
+	
+	.stMultiSelect > div > div > div {
+		background-color: #262730;
+		color: #fafafa;
+	}
+	
+	/* Professional typography improvements */
+	.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+		margin-top: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+	
+	/* Compact spacing for better density */
+	.stMarkdown p {
+		margin-bottom: 0.25rem;
+	}
+	
+	/* Professional caption styling */
+	.stImage > div {
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: #9ca3af;
+		text-align: center;
+		margin-top: 0.5rem;
+		padding: 0.25rem;
+		background-color: rgba(26, 27, 35, 0.8);
+		border-radius: 4px;
+	}
 	</style>
 	""", unsafe_allow_html=True)
 	
-	# Compact header
-	st.title("DICOM Grid Viewer")
+	# Professional header
+	st.markdown("## DICOM Viewer")
 	
 	# Initialize session state for uploaded files
 	if 'uploaded_files' not in st.session_state:
@@ -637,23 +729,23 @@ def main():
 	# File upload section - only show if no files uploaded
 	if st.session_state.uploaded_files is None:
 		uploaded_files = st.file_uploader(
-			"Choose ZIP file(s) to analyze", 
+			"Upload DICOM ZIP files", 
 			type=["zip"], 
 			accept_multiple_files=True,
-			help="Select one or more ZIP files containing DICOM data"
+			help="Select ZIP files containing DICOM data"
 		)
 		
 		if uploaded_files:
 			st.session_state.uploaded_files = uploaded_files
 			st.rerun()
 		else:
-			st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
+			st.info("Upload ZIP files to begin analysis")
 			return
 	else:
 		uploaded_files = st.session_state.uploaded_files
 
-	# Loading spinner + cached processing
-	with st.spinner("Processing ZIP files and extracting DICOM data..."):
+	# Processing
+	with st.spinner("Processing DICOM data..."):
 		zip_blobs: List[Tuple[str, bytes]] = []
 		invalid_files = []
 		
@@ -702,20 +794,17 @@ def main():
 		
 		# Show warnings for invalid files
 		if invalid_files:
-			st.warning(f"**Invalid files skipped:** {', '.join(invalid_files)}")
+			st.warning(f"Invalid files skipped: {', '.join(invalid_files)}")
 		
 		# Check if we have any valid files
 		if not zip_blobs:
-			st.error("**No valid ZIP files found.** Please upload valid ZIP files containing DICOM data.")
-			# Add debug information
-			st.info(f"**Debug info:** Uploaded {len(uploaded_files)} files, processed {len(zip_blobs)} valid files")
+			st.error("No valid ZIP files found. Please upload valid ZIP files containing DICOM data.")
 			return
 		
 		try:
 			all_series = build_series_from_zip_blobs(zip_blobs)
 		except Exception as e:
-			st.error(f"**Error processing ZIP files:** {str(e)}")
-			st.info("Please try uploading different ZIP files or check if the files contain valid DICOM data.")
+			st.error(f"Error processing ZIP files: {str(e)}")
 			return
 	
 	# Filter to exclude series with exactly 68 frames
@@ -723,35 +812,26 @@ def main():
 	filtered_count = len(all_series) - len(series)
 	
 	if series:
-		# st.success(f"**{len(series)} DICOM series** detected")
-		
 		uid_list = list(series.keys())
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		
-		# Series selection with responsive layout and reset option
-		col_series, col_columns, col_reset = st.columns([10, 1, 1])
+		# Compact series selection
+		col_series, col_columns = st.columns([3, 1])
 		with col_series:
 			grid_selection = st.multiselect(
 				"Select series",
 				options=uid_list,
 				format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}",
-				help="Choose which DICOM series to display"
+				help="Choose DICOM series to display"
 			)
 		with col_columns:
-			num_cols = st.number_input("Columns", min_value=1, max_value=4, value=2, key="grid_cols")
-		# with col_reset:
-		# 	if st.button("🔄", help="Reset and upload new files"):
-		# 		st.session_state.uploaded_files = None
-		# 		st.rerun()
+			num_cols = st.selectbox("Layout", options=[1, 2, 3, 4], index=1, key="grid_cols")
 		
 		if grid_selection:
 			performance_mode = True
-			# Create table-based grid
 			create_table_grid(series, grid_selection, num_cols, performance_mode)
 	else:
-		st.warning("**No DICOM series found** in the uploaded files. Please ensure your ZIP files contain valid DICOM data.")
-
-	# st.success("**Analysis complete!** Your DICOM grid is ready for review.")
+		st.warning("No DICOM series found in uploaded files")
 
 
 if __name__ == "__main__":
