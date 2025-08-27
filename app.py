@@ -312,10 +312,17 @@ def main():
 	# Loading spinner + cached processing
 	with st.spinner("Processing ZIP files and extracting DICOM data..."):
 		zip_blobs: List[Tuple[str, bytes]] = [(uf.name, uf.read()) for uf in uploaded_files]
-		series = build_series_from_zip_blobs(zip_blobs)
+		all_series = build_series_from_zip_blobs(zip_blobs)
+	
+	# Filter series to only include those with 65 frames or fewer
+	series = {uid: s for uid, s in all_series.items() if len(s.get("frames", [])) <= 65}
+	filtered_count = len(all_series) - len(series)
+	
 	if series:
 		st.subheader("DICOM Series Analysis")
 		st.success(f"**{len(series)} DICOM series** detected and processed successfully!")
+		if filtered_count > 0:
+			st.info(f"ℹ️ **Note:** {filtered_count} series with more than 65 frames have been filtered out to prevent performance issues.")
 		
 		# Grid view section
 		st.subheader("Multi-Series Grid View")
