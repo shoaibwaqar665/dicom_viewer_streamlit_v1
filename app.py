@@ -340,21 +340,21 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	# Calculate actual frame number from sampling
 	actual_frame_num = (frame_idx * len(frames)) // len(sampled_frames) + 1
 	
-	st.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", width=200)
+	st.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", width=400)
 
 
 def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List[str], num_cols: int, performance_mode: bool):
-	"""Create a compact table-based grid layout with consistent image sizing"""
+	"""Create a responsive table-based grid layout with adaptive image sizing"""
 	# Calculate number of rows needed
 	num_series = len(grid_selection)
 	num_rows = (num_series + num_cols - 1) // num_cols
 	
 	# Create table rows
 	for row in range(num_rows):
-		# For single column layout, add empty columns to center the content
+		# For single column layout, use full width
 		if num_cols == 1:
-			cols = st.columns([1, 2, 1])  # Left spacer, content, right spacer
-			content_col = 1  # Use middle column for content
+			cols = st.columns([1])  # Single column for narrow screens
+			content_col = 0
 		else:
 			cols = st.columns(num_cols)
 			content_col = 0  # Start from first column
@@ -403,16 +403,18 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	
 	# Use optimized single-frame rendering for instant display
 	if performance_mode:
-		# Fast mode: use consistent thumbnail size regardless of column count
-		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=300)
+		# Fast mode: use responsive thumbnail size based on column count
+		max_size = 300 if num_cols <= 2 else 250 if num_cols == 3 else 200
+		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=max_size)
 	else:
 		# Quality mode: use full rendering with preloading (like IMAIOS)
 		img = pre_render_frame_optimized(frames[frame_idx], panel_ww, panel_wl, 100)  # Fixed zoom at 100%
 		# Pre-load adjacent frames for smoother scrolling
 		preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=2)
 	
-	# Use fixed image size instead of container width for consistent sizing
-	st.image(img, caption=f"{current_frame}/{num_frames}", width=300)
+	# Use responsive image width based on column count
+	image_width = 300 if num_cols <= 2 else 250 if num_cols == 3 else 200
+	st.image(img, caption=f"{current_frame}/{num_frames}", width=image_width)
 
 
 def main():
@@ -422,11 +424,11 @@ def main():
 		initial_sidebar_state="collapsed"
 	)
 	
-	# Add custom CSS for compact layout
+	# Add custom CSS for responsive layout
 	st.markdown("""
 	<style>
 	.main .block-container {
-		padding-top: 1rem;
+		padding-top: 0.5rem;
 		padding-bottom: 1rem;
 		padding-left: 1rem;
 		padding-right: 1rem;
@@ -437,21 +439,53 @@ def main():
 	.element-container {
 		margin-bottom: 0.5rem;
 	}
+	/* Responsive file uploader */
+	.stFileUploader {
+		width: 100% !important;
+		max-width: 600px !important;
+	}
+	.stFileUploader > div {
+		height: 80px !important;
+	}
+	.stFileUploader > div > div {
+		height: 60px !important;
+	}
+	/* Responsive grid adjustments */
+	@media (max-width: 768px) {
+		.stFileUploader {
+			width: 100% !important;
+			max-width: 100% !important;
+		}
+		.stFileUploader > div {
+			height: 100px !important;
+		}
+		.stFileUploader > div > div {
+			height: 80px !important;
+		}
+		/* Adjust padding for narrow screens */
+		.main .block-container {
+			padding-left: 0.5rem !important;
+			padding-right: 0.5rem !important;
+		}
+	}
+	/* Ensure images don't overflow on narrow screens */
+	.stImage > img {
+		max-width: 100% !important;
+		height: auto !important;
+	}
 	</style>
 	""", unsafe_allow_html=True)
 	
 	# Compact header
 	st.title("DICOM Grid Viewer")
 	
-	# File upload section with parallel layout
-	col_upload, col_info = st.columns([2, 1])
-	with col_upload:
-		uploaded_files = st.file_uploader(
-			"Choose ZIP file(s) to analyze", 
-			type=["zip"], 
-			accept_multiple_files=True,
-			help="Select one or more ZIP files containing DICOM data"
-		)
+	# File upload section in column direction with reduced size
+	uploaded_files = st.file_uploader(
+		"Choose ZIP file(s) to analyze", 
+		type=["zip"], 
+		accept_multiple_files=True,
+		help="Select one or more ZIP files containing DICOM data"
+	)
 	
 	if not uploaded_files:
 		st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
@@ -472,8 +506,8 @@ def main():
 		uid_list = list(series.keys())
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		
-		# Series selection with parallel columns control
-		col_series, col_columns = st.columns([11, 1])
+		# Series selection with responsive layout
+		col_series, col_columns = st.columns([3, 1])
 		with col_series:
 			grid_selection = st.multiselect(
 				"Select series",
@@ -482,7 +516,7 @@ def main():
 				help="Choose which DICOM series to display"
 			)
 		with col_columns:
-			num_cols = st.number_input("Columns", min_value=1, max_value=4, value=4, key="grid_cols")
+			num_cols = st.number_input("Columns", min_value=1, max_value=4, value=2, key="grid_cols")
 		
 		if grid_selection:
 			performance_mode = True
