@@ -432,9 +432,15 @@ def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List
 	# Create professional grid rows
 	for row in range(num_rows):
 		if num_cols == 1:
-			cols = st.columns([1, 3, 1], gap="large")
+			# Center content for single column
+			cols = st.columns([1, 2, 1], gap="large")
 			content_col = 1
+		elif num_cols == 2:
+			# Center content for 2 columns
+			cols = st.columns([1, 1, 1], gap="large")
+			content_col = 0
 		else:
+			# Left align for 3+ columns
 			cols = st.columns(num_cols, gap="large")
 			content_col = 0
 		
@@ -445,7 +451,12 @@ def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List
 				gs = series[uid]
 				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
 				if g_frames:
-					display_col = content_col if num_cols == 1 else content_col + col
+					if num_cols == 1:
+						display_col = content_col
+					elif num_cols == 2:
+						display_col = content_col + col
+					else:
+						display_col = content_col + col
 					with cols[display_col]:
 						with st.container():
 							render_compact_series_panel(uid, gs, series_idx, len(g_frames), performance_mode, num_cols)
