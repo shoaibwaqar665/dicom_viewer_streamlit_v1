@@ -461,8 +461,8 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	st.markdown(f"**{gs['modality']}** {gs['series_desc'][:25]}{'...' if len(gs['series_desc']) > 25 else ''}")
 	st.caption(f"{gs['patient_name'][:20]}{'...' if len(gs['patient_name']) > 20 else ''} ({num_frames} frames)")
 
-	# Professional controls layout
-	col_ww, col_wl, col_frame = st.columns([1, 1, 2])
+	# Compact controls layout - WW/WL in first row
+	col_ww, col_wl = st.columns([1, 1])
 	with col_ww:
 		panel_ww = st.number_input(
 			"WW", 
@@ -485,14 +485,15 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 			label_visibility="collapsed",
 			help="Window Level"
 		)
-	with col_frame:
-		current_frame = st.slider(
-			"Frame",
-			min_value=1,
-			max_value=num_frames,
-			key=panel_key,
-			label_visibility="collapsed"
-		)
+	
+	# Frame slider below WW/WL
+	current_frame = st.slider(
+		"Frame",
+		min_value=1,
+		max_value=num_frames,
+		key=panel_key,
+		label_visibility="collapsed"
+	)
 
 	# Render only the current frame for smoother scrolling
 	frames: List[np.ndarray] = gs["frames"]  # type: ignore
@@ -500,11 +501,11 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	
 	# Real-time slider implementation with instant feedback
 	# First, show instant thumbnail for immediate response
-	max_size = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
+	max_size = 300  # Consistent size for all layouts
 	instant_img = create_instant_thumbnail(frames[frame_idx], max_size=max_size)
 	
 	# Display the instant thumbnail immediately
-	image_width = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
+	image_width = 300  # Consistent width for all layouts
 	image_placeholder = st.empty()
 	image_placeholder.image(instant_img, caption=f"{current_frame}/{num_frames}", width=image_width)
 	
@@ -514,14 +515,14 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	
 	# Then load the full-quality image in the background
 	if performance_mode:
-		# Fast mode: use responsive thumbnail size for better quality
-		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=max_size)
+		# Fast mode: use consistent thumbnail size for better quality
+		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=300)
 	else:
 		# Quality mode: use full rendering with preloading (like IMAIOS)
 		img = pre_render_frame_optimized(frames[frame_idx], panel_ww, panel_wl, 100)  # Fixed zoom at 100%
 	
 	# Update with the full-quality image
-	image_placeholder.image(img, caption=f"{current_frame}/{num_frames}", width=image_width)
+	image_placeholder.image(img, caption=f"{current_frame}/{num_frames}", width=300)
 
 
 def main():
@@ -545,6 +546,7 @@ def main():
 		max-width: 100% !important;
 		padding: 1rem 2rem;
 		background-color: #0e1117;
+		border-radius: 6px;
 	}
 	
 	/* Hide Streamlit branding */
@@ -569,9 +571,10 @@ def main():
 		background-color: #262730;
 		border: 1px solid #3d4043;
 		color: #fafafa;
-		font-size: 0.9rem;
-		padding: 0.4rem;
-		height: 2.2rem;
+		font-size: 0.85rem;
+		padding: 0.3rem;
+		height: 1.8rem;
+		width: 100%;
 	}
 	
 	.stSlider > div > div > div > div {
@@ -687,11 +690,17 @@ def main():
 	.stMultiSelect > div > div {
 		background-color: #262730;
 		border: 1px solid #3d4043;
+		border-radius: 8px;
 	}
 	
 	.stMultiSelect > div > div > div {
 		background-color: #262730;
 		color: #fafafa;
+		border-radius: 6px;
+	}
+	
+	.stMultiSelect > div > div > div > div {
+		border-radius: 6px;
 	}
 	
 	/* Professional typography improvements */
