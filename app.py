@@ -340,18 +340,25 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	# Calculate actual frame number from sampling
 	actual_frame_num = (frame_idx * len(frames)) // len(sampled_frames) + 1
 	
-	st.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", use_container_width=True)
+	st.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", width=200)
 
 
 def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List[str], num_cols: int, performance_mode: bool):
-	"""Create a compact table-based grid layout"""
+	"""Create a compact table-based grid layout with consistent image sizing"""
 	# Calculate number of rows needed
 	num_series = len(grid_selection)
 	num_rows = (num_series + num_cols - 1) // num_cols
 	
 	# Create table rows
 	for row in range(num_rows):
-		cols = st.columns(num_cols)
+		# For single column layout, add empty columns to center the content
+		if num_cols == 1:
+			cols = st.columns([1, 2, 1])  # Left spacer, content, right spacer
+			content_col = 1  # Use middle column for content
+		else:
+			cols = st.columns(num_cols)
+			content_col = 0  # Start from first column
+		
 		for col in range(num_cols):
 			series_idx = row * num_cols + col
 			if series_idx < num_series:
@@ -359,12 +366,14 @@ def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List
 				gs = series[uid]
 				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
 				if g_frames:
-					with cols[col]:
-						render_compact_series_panel(uid, gs, series_idx, len(g_frames), performance_mode)
+					# Use appropriate column based on layout
+					display_col = content_col + col if num_cols > 1 else content_col
+					with cols[display_col]:
+						render_compact_series_panel(uid, gs, series_idx, len(g_frames), performance_mode, num_cols)
 
 
 @st.fragment
-def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: int, num_frames: int, performance_mode: bool = True):
+def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: int, num_frames: int, performance_mode: bool = True, num_cols: int = 4):
 	panel_key = f"grid_frame_{uid}"
 	if panel_key not in st.session_state:
 		st.session_state[panel_key] = 1
@@ -395,14 +404,15 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	# Use optimized single-frame rendering for instant display
 	if performance_mode:
 		# Fast mode: use consistent thumbnail size regardless of column count
-		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=200)
+		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=300)
 	else:
 		# Quality mode: use full rendering with preloading (like IMAIOS)
 		img = pre_render_frame_optimized(frames[frame_idx], panel_ww, panel_wl, 100)  # Fixed zoom at 100%
 		# Pre-load adjacent frames for smoother scrolling
 		preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=2)
 	
-	st.image(img, caption=f"{current_frame}/{num_frames}", use_container_width=True)
+	# Use fixed image size instead of container width for consistent sizing
+	st.image(img, caption=f"{current_frame}/{num_frames}", width=300)
 
 
 def main():
