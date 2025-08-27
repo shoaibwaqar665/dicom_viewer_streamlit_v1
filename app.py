@@ -232,8 +232,8 @@ def pre_render_frame_optimized(frame: np.ndarray, ww: float, wl: float, zoom: in
 		new_size = (int(img.width * scale), int(img.height * scale))
 		img = img.resize(new_size, Image.Resampling.LANCZOS)
 	
-	# Limit image size for faster rendering (max 300x300 for smoother scrolling)
-	max_size = 300
+	# Limit image size for consistent display across all column layouts
+	max_size = 200
 	if img.width > max_size or img.height > max_size:
 		img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
 	
@@ -369,25 +369,24 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	if panel_key not in st.session_state:
 		st.session_state[panel_key] = 1
 
-	# Compact series info
-	st.markdown(f"**{gs['modality']}** {gs['series_desc']}")
-	st.caption(f"{gs['patient_name']} ({num_frames} frames)")
+	# Ultra-compact series info
+	st.markdown(f"**{gs['modality']}** {gs['series_desc'][:20]}{'...' if len(gs['series_desc']) > 20 else ''}")
+	st.caption(f"{gs['patient_name'][:15]}{'...' if len(gs['patient_name']) > 15 else ''} ({num_frames})")
 
-	# Compact WW/WL controls
-	col_ww, col_wl = st.columns(2)
+	# Compact WW/WL controls in single row
+	col_ww, col_wl, col_frame = st.columns([1, 1, 2])
 	with col_ww:
 		panel_ww = st.number_input("WW", value=1.0, key=f"ww_{uid}", label_visibility="collapsed")
 	with col_wl:
 		panel_wl = st.number_input("WL", value=1.0, key=f"wl_{uid}", label_visibility="collapsed")
-
-	# Compact frame slider
-	current_frame = st.slider(
-		"Frame",
-		min_value=1,
-		max_value=num_frames,
-		key=panel_key,
-		label_visibility="collapsed"
-	)
+	with col_frame:
+		current_frame = st.slider(
+			"Frame",
+			min_value=1,
+			max_value=num_frames,
+			key=panel_key,
+			label_visibility="collapsed"
+		)
 
 	# Render only the current frame for smoother scrolling
 	frames: List[np.ndarray] = gs["frames"]  # type: ignore
@@ -395,8 +394,8 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	
 	# Use optimized single-frame rendering for instant display
 	if performance_mode:
-		# Fast mode: use thumbnail for smoother scrolling with panel-specific WW/WL
-		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=250)
+		# Fast mode: use consistent thumbnail size regardless of column count
+		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=200)
 	else:
 		# Quality mode: use full rendering with preloading (like IMAIOS)
 		img = pre_render_frame_optimized(frames[frame_idx], panel_ww, panel_wl, 100)  # Fixed zoom at 100%
@@ -413,16 +412,54 @@ def main():
 		initial_sidebar_state="collapsed"
 	)
 	
+	# Add custom CSS for compact layout
+	st.markdown("""
+	<style>
+	.main .block-container {
+		padding-top: 1rem;
+		padding-bottom: 1rem;
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+	.stImage > img {
+		border-radius: 0.5rem;
+	}
+	.element-container {
+		margin-bottom: 0.5rem;
+	}
+	</style>
+	""", unsafe_allow_html=True)
+	
 	# Compact header
 	st.title("DICOM Grid Viewer")
 	
-	# File upload section
-	uploaded_files = st.file_uploader(
-		"Choose ZIP file(s) to analyze", 
-		type=["zip"], 
-		accept_multiple_files=True,
-		help="Select one or more ZIP files containing DICOM data"
-	)
+	# File upload section with parallel layout
+	col_upload, col_info = st.columns([2, 1])
+	with col_upload:
+		uploaded_files = st.file_uploader(
+			"Choose ZIP file(s) to analyze", 
+			type=["zip"], 
+			accept_multiple_files=True,
+			help="Select one or more ZIP files containing DICOM data"
+		)
+	# with col_info:
+	# 	if uploaded_files:
+	# 		# Display files with size information
+	# 		st.markdown("**Uploaded Files:**")
+	# 		for i, file in enumerate(uploaded_files):
+	# 			# Format file size
+	# 			file_size = file.size
+	# 			if file_size < 1024:
+	# 				size_str = f"{file_size} B"
+	# 			elif file_size < 1024**2:
+	# 				size_str = f"{file_size/1024:.1f} KB"
+	# 			else:
+	# 				size_str = f"{file_size/(1024**2):.1f} MB"
+				
+	# 			st.text(f"{file.name} ({size_str})")
+	# 	else:
+	# 		st.info("**No files selected**")
+	
 	if not uploaded_files:
 		st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
 		return
@@ -437,24 +474,25 @@ def main():
 	filtered_count = len(all_series) - len(series)
 	
 	if series:
-		st.success(f"**{len(series)} DICOM series** detected")
+		# st.success(f"**{len(series)} DICOM series** detected")
 		
 		uid_list = list(series.keys())
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		
-		# Series selection
-		grid_selection = st.multiselect(
-			"Select series",
-			options=uid_list,
-			format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}",
-			help="Choose which DICOM series to display"
-		)
+		# Series selection with parallel columns control
+		col_series, col_columns = st.columns([3, 1])
+		with col_series:
+			grid_selection = st.multiselect(
+				"Select series",
+				options=uid_list,
+				format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}",
+				help="Choose which DICOM series to display"
+			)
+		with col_columns:
+			num_cols = st.number_input("Columns", min_value=1, max_value=4, value=4, key="grid_cols")
 		
 		if grid_selection:
-			# Compact controls
-			num_cols = st.slider("Columns", min_value=1, max_value=4, value=4, key="grid_cols")
 			performance_mode = True
-
 			# Create table-based grid
 			create_table_grid(series, grid_selection, num_cols, performance_mode)
 	else:
