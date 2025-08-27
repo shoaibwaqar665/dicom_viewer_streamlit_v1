@@ -37,14 +37,21 @@ def format_patient_name(pn_obj) -> str:
 
 
 def load_zip(file_bytes: bytes, name_prefix: str = "") -> List[Tuple[str, bytes]]:
-	with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-		items = []
-		for info in zf.infolist():
-			if info.is_dir():
-				continue
-			with zf.open(info) as f:
-				items.append((f"{name_prefix}{info.filename}", f.read()))
-		return items
+	try:
+		with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+			items = []
+			for info in zf.infolist():
+				if info.is_dir():
+					continue
+				with zf.open(info) as f:
+					items.append((f"{name_prefix}{info.filename}", f.read()))
+			return items
+	except zipfile.BadZipFile:
+		# Return empty list for invalid ZIP files
+		return []
+	except Exception as e:
+		# Handle other potential errors
+		return []
 
 
 def is_image(name: str) -> bool:
@@ -539,22 +546,93 @@ def main():
 	# Compact header
 	st.title("DICOM Grid Viewer")
 	
-	# File upload section in column direction with reduced size
-	uploaded_files = st.file_uploader(
-		"Choose ZIP file(s) to analyze", 
-		type=["zip"], 
-		accept_multiple_files=True,
-		help="Select one or more ZIP files containing DICOM data"
-	)
+	# Initialize session state for uploaded files
+	if 'uploaded_files' not in st.session_state:
+		st.session_state.uploaded_files = None
 	
-	if not uploaded_files:
-		st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
-		return
+	# File upload section - only show if no files uploaded
+	if st.session_state.uploaded_files is None:
+		uploaded_files = st.file_uploader(
+			"Choose ZIP file(s) to analyze", 
+			type=["zip"], 
+			accept_multiple_files=True,
+			help="Select one or more ZIP files containing DICOM data"
+		)
+		
+		if uploaded_files:
+			st.session_state.uploaded_files = uploaded_files
+			st.rerun()
+		else:
+			st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
+			return
+	else:
+		uploaded_files = st.session_state.uploaded_files
 
 	# Loading spinner + cached processing
 	with st.spinner("Processing ZIP files and extracting DICOM data..."):
-		zip_blobs: List[Tuple[str, bytes]] = [(uf.name, uf.read()) for uf in uploaded_files]
-		all_series = build_series_from_zip_blobs(zip_blobs)
+		zip_blobs: List[Tuple[str, bytes]] = []
+		invalid_files = []
+		
+		for uf in uploaded_files:
+			try:
+				# Validate file extension
+				if not uf.name.lower().endswith('.zip'):
+					invalid_files.append(f"{uf.name} (not a ZIP file)")
+					continue
+				
+				# Check if file object is valid
+				if uf is None:
+					invalid_files.append(f"{uf.name} (file object is None)")
+					continue
+				
+				# Read file bytes with better error handling
+				try:
+					# Reset file pointer to beginning
+					uf.seek(0)
+					file_bytes = uf.read()
+					
+					# Check if file is empty
+					if len(file_bytes) == 0:
+						invalid_files.append(f"{uf.name} (empty file)")
+						continue
+						
+				except Exception as read_error:
+					invalid_files.append(f"{uf.name} (error reading file: {str(read_error)})")
+					continue
+				
+				# Test if it's a valid ZIP file
+				try:
+					with zipfile.ZipFile(io.BytesIO(file_bytes)) as test_zf:
+						test_zf.infolist()  # Try to read the file list
+					zip_blobs.append((uf.name, file_bytes))
+				except zipfile.BadZipFile:
+					invalid_files.append(f"{uf.name} (invalid ZIP file)")
+					continue
+				except Exception as zip_error:
+					invalid_files.append(f"{uf.name} (ZIP error: {str(zip_error)})")
+					continue
+					
+			except Exception as e:
+				invalid_files.append(f"{uf.name} (unexpected error: {str(e)})")
+				continue
+		
+		# Show warnings for invalid files
+		if invalid_files:
+			st.warning(f"**Invalid files skipped:** {', '.join(invalid_files)}")
+		
+		# Check if we have any valid files
+		if not zip_blobs:
+			st.error("**No valid ZIP files found.** Please upload valid ZIP files containing DICOM data.")
+			# Add debug information
+			st.info(f"**Debug info:** Uploaded {len(uploaded_files)} files, processed {len(zip_blobs)} valid files")
+			return
+		
+		try:
+			all_series = build_series_from_zip_blobs(zip_blobs)
+		except Exception as e:
+			st.error(f"**Error processing ZIP files:** {str(e)}")
+			st.info("Please try uploading different ZIP files or check if the files contain valid DICOM data.")
+			return
 	
 	# Filter to exclude series with exactly 68 frames
 	series = {uid: s for uid, s in all_series.items() if len(s.get("frames", [])) != 68}
@@ -566,8 +644,8 @@ def main():
 		uid_list = list(series.keys())
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		
-		# Series selection with responsive layout
-		col_series, col_columns = st.columns([11, 1])
+		# Series selection with responsive layout and reset option
+		col_series, col_columns, col_reset = st.columns([10, 1, 1])
 		with col_series:
 			grid_selection = st.multiselect(
 				"Select series",
@@ -577,6 +655,10 @@ def main():
 			)
 		with col_columns:
 			num_cols = st.number_input("Columns", min_value=1, max_value=4, value=2, key="grid_cols")
+		# with col_reset:
+		# 	if st.button("🔄", help="Reset and upload new files"):
+		# 		st.session_state.uploaded_files = None
+		# 		st.rerun()
 		
 		if grid_selection:
 			performance_mode = True
