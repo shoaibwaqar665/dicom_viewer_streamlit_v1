@@ -109,7 +109,7 @@ def normalize_to_uint8(arr: np.ndarray, ww: float = None, wl: float = None) -> n
 
 
 def extract_frames_from_dataset(ds: pydicom.dataset.FileDataset) -> List[np.ndarray]:
-	# Returns a list of 2D frames (np.uint8) for viewing
+	# Returns a list of 2D frames (np.uint8) for viewing - optimized for speed
 	if not hasattr(ds, "pixel_array"):
 		return []
 	arr = ds.pixel_array
@@ -126,8 +126,8 @@ def extract_frames_from_dataset(ds: pydicom.dataset.FileDataset) -> List[np.ndar
 		# Collapse all leading dims except the last 2
 		lead = int(np.prod(arr.shape[:-2]))
 		frames = [arr.reshape(lead, arr.shape[-2], arr.shape[-1])[i] for i in range(lead)]
-	# Convert to uint8 range using per-frame normalization for robustness
-	return [normalize_to_uint8(f) for f in frames]
+	# Fast conversion to uint8 - skip normalization for speed
+	return [f.astype(np.uint8) for f in frames]
 
 
 def _parse_time_to_float(hhmmss: str) -> float:
@@ -337,22 +337,16 @@ def create_compact_thumbnail(frame: np.ndarray, max_size: int = 150) -> Image.Im
 	return img
 
 
-@st.cache_data(show_spinner=False, max_entries=500)
+@st.cache_data(show_spinner=False, max_entries=1000)
 def create_instant_thumbnail(frame: np.ndarray, max_size: int = 250) -> Image.Image:
-	"""Create instant thumbnail for real-time slider feedback - fastest possible rendering"""
-	# Ultra-fast normalization using numpy operations
-	arr = frame.astype(np.float32)
-	# Use faster min/max calculation with numpy's built-in functions
-	min_val, max_val = np.min(arr), np.max(arr)
-	if max_val > min_val:
-		arr = (arr - min_val) / (max_val - min_val)
-	else:
-		arr = arr - min_val
-	arr = (arr * 255.0).astype(np.uint8)
+	"""Ultra-fast thumbnail for instant slider response"""
+	# Skip normalization for maximum speed - use raw data
+	arr = frame.astype(np.uint8)
 	
-	# Create image and resize in one step for better performance
+	# Create image directly
 	img = Image.fromarray(arr)
-	# Use NEAREST for fastest resizing, and calculate optimal size
+	
+	# Fast resize only if needed
 	if img.width > max_size or img.height > max_size:
 		img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
 	
@@ -497,43 +491,49 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 			help="Window Level"
 		)
 	
-	# Frame slider below WW/WL
+	# Ultra-fast frame slider with reduced updates
 	current_frame = st.slider(
 		"Frame",
 		min_value=1,
 		max_value=num_frames,
+		step=1,
 		key=panel_key,
-		label_visibility="collapsed"
+		label_visibility="collapsed",
+		help="Drag to navigate frames"
 	)
 
 	# Render only the current frame for smoother scrolling
 	frames: List[np.ndarray] = gs["frames"]  # type: ignore
 	frame_idx = current_frame - 1
 	
-	# Real-time slider implementation with instant feedback
-	# First, show instant thumbnail for immediate response
-	max_size = 300  # Consistent size for all layouts
-	instant_img = create_instant_thumbnail(frames[frame_idx], max_size=max_size)
+	# Ultra-fast image sizing - smaller for speed
+	if num_cols == 1:
+		image_width = 350
+		max_size = 350
+	elif num_cols == 2:
+		image_width = 350
+		max_size = 350
+	elif num_cols == 3:
+		image_width = 350
+		max_size = 350
+	else:  # 4 columns
+		image_width = 350
+		max_size = 350
 	
-	# Display the instant thumbnail immediately
-	image_width = 300  # Consistent width for all layouts
-	image_placeholder = st.empty()
-	image_placeholder.image(instant_img, caption=f"{current_frame}/{num_frames}", width=image_width)
+	# Ultra-fast rendering - minimal processing
+	# Use direct numpy array to PIL conversion for maximum speed
+	frame_data = frames[frame_idx]
 	
-	# Pre-load adjacent frames for smoother scrolling (background task)
-	preload_instant_thumbnails(frames, frame_idx, max_size, cache_range=5)
-	preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=3)
+	# Fast resize if needed
+	if frame_data.shape[0] > max_size or frame_data.shape[1] > max_size:
+		# Use numpy for faster resizing
+		scale = min(max_size / frame_data.shape[0], max_size / frame_data.shape[1])
+		new_h, new_w = int(frame_data.shape[0] * scale), int(frame_data.shape[1] * scale)
+		frame_data = np.array(Image.fromarray(frame_data).resize((new_w, new_h), Image.Resampling.NEAREST))
 	
-	# Then load the full-quality image in the background
-	if performance_mode:
-		# Fast mode: use consistent thumbnail size for better quality
-		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=300)
-	else:
-		# Quality mode: use full rendering with preloading (like IMAIOS)
-		img = pre_render_frame_optimized(frames[frame_idx], panel_ww, panel_wl, 100)  # Fixed zoom at 100%
-	
-	# Update with the full-quality image
-	image_placeholder.image(img, caption=f"{current_frame}/{num_frames}", width=300)
+	# Convert to PIL and display
+	img = Image.fromarray(frame_data.astype(np.uint8))
+	st.image(img, caption=f"{current_frame}/{num_frames}", width=image_width)
 
 
 def main():
@@ -590,6 +590,16 @@ def main():
 	
 	.stSlider > div > div > div > div {
 		background-color: #262730;
+	}
+	
+	.stSlider > div > div > div > div > div {
+		
+		transition: none !important;
+	}
+	
+	/* Ultra-fast slider styling */
+	.stSlider input[type="range"] {
+		transition: none !important;
 	}
 	
 	
@@ -662,20 +672,90 @@ def main():
 		color: #60a5fa;
 	}
 	
-	/* Responsive design */
-	@media (max-width: 768px) {
+	/* Responsive design for all desktop screens */
+	@media (max-width: 1200px) {
 		.main .block-container {
-			padding: 0.5rem 1rem;
+			padding: 1rem 1.5rem;
+		}
+		[data-testid="column"] {
+			padding: 0.75rem;
+			margin: 0.5rem;
+		}
+		.stImage > img {
+			max-width: 280px !important;
+		}
+	}
+	
+	@media (max-width: 992px) {
+		.main .block-container {
+			padding: 0.75rem 1rem;
 		}
 		[data-testid="column"] {
 			padding: 0.5rem;
-			margin: 0.25rem;
+			margin: 0.4rem;
+		}
+		.stImage > img {
+			max-width: 250px !important;
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.main .block-container {
+			padding: 0.5rem 0.75rem;
+		}
+		[data-testid="column"] {
+			padding: 0.4rem;
+			margin: 0.3rem;
+		}
+		.stImage > img {
+			max-width: 220px !important;
+		}
+	}
+	
+	@media (max-width: 576px) {
+		.main .block-container {
+			padding: 0.5rem 0.5rem;
+		}
+		[data-testid="column"] {
+			padding: 0.3rem;
+			margin: 0.2rem;
+		}
+		.stImage > img {
+			max-width: 200px !important;
+		}
+	}
+	
+	/* Large desktop screens */
+	@media (min-width: 1400px) {
+		.main .block-container {
+			padding: 1.5rem 3rem;
+		}
+		[data-testid="column"] {
+			padding: 1.25rem;
+			margin: 1rem;
+		}
+		.stImage > img {
+			max-width: 350px !important;
+		}
+	}
+	
+	/* Ultra-wide screens */
+	@media (min-width: 1920px) {
+		.main .block-container {
+			padding: 2rem 4rem;
+		}
+		[data-testid="column"] {
+			padding: 1.5rem;
+			margin: 1.25rem;
+		}
+		.stImage > img {
+			max-width: 400px !important;
 		}
 	}
 	
 	/* Professional button styling */
 	.stButton > button {
-		background-color: #00d4aa;
+		# background-color: #00d4aa;
 		color: #0e1117;
 		border: none;
 		border-radius: 6px;
@@ -735,6 +815,42 @@ def main():
 		padding: 0.25rem;
 		background-color: rgba(26, 27, 35, 0.8);
 		border-radius: 4px;
+	}
+	
+	/* Responsive controls */
+	@media (max-width: 992px) {
+		.stNumberInput > div > div > input {
+			font-size: 0.8rem;
+			padding: 0.25rem;
+			height: 1.6rem;
+		}
+		.stSlider > div > div > div {
+			height: 0.3rem;
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.stNumberInput > div > div > input {
+			font-size: 0.75rem;
+			padding: 0.2rem;
+			height: 1.4rem;
+		}
+		.stSlider > div > div > div {
+			height: 0.25rem;
+		}
+	}
+	
+	/* Responsive file uploader */
+	@media (max-width: 1200px) {
+		.stFileUploader {
+			max-width: 500px;
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.stFileUploader {
+			max-width: 100%;
+		}
 	}
 	</style>
 	""", unsafe_allow_html=True)
