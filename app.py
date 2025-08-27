@@ -349,14 +349,14 @@ def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List
 	num_series = len(grid_selection)
 	num_rows = (num_series + num_cols - 1) // num_cols
 	
-	# Create table rows
+	# Create table rows with proper spacing
 	for row in range(num_rows):
-		# For single column layout, use full width
+		# For single column layout, center the content
 		if num_cols == 1:
-			cols = st.columns([1])  # Single column for narrow screens
-			content_col = 0
+			cols = st.columns([1, 2, 1], gap="medium")  # Left spacer, content, right spacer
+			content_col = 1  # Use middle column for content
 		else:
-			cols = st.columns(num_cols)
+			cols = st.columns(num_cols, gap="medium")  # Add gap between columns
 			content_col = 0  # Start from first column
 		
 		for col in range(num_cols):
@@ -367,9 +367,14 @@ def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List
 				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
 				if g_frames:
 					# Use appropriate column based on layout
-					display_col = content_col + col if num_cols > 1 else content_col
+					if num_cols == 1:
+						display_col = content_col  # Always use middle column for single column
+					else:
+						display_col = content_col + col  # Use sequential columns for multi-column
 					with cols[display_col]:
-						render_compact_series_panel(uid, gs, series_idx, len(g_frames), performance_mode, num_cols)
+						# Add container with spacing
+						with st.container():
+							render_compact_series_panel(uid, gs, series_idx, len(g_frames), performance_mode, num_cols)
 
 
 @st.fragment
@@ -383,11 +388,29 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	st.caption(f"{gs['patient_name'][:15]}{'...' if len(gs['patient_name']) > 15 else ''} ({num_frames})")
 
 	# Compact WW/WL controls in single row
-	col_ww, col_wl, col_frame = st.columns([1, 1, 2])
+	col_ww, col_wl, col_frame = st.columns([1, 1, 1])
 	with col_ww:
-		panel_ww = st.number_input("WW", value=1.0, key=f"ww_{uid}", label_visibility="collapsed")
+		panel_ww = st.number_input(
+			"WW", 
+			value=1.0, 
+			min_value=0.1, 
+			max_value=1000.0, 
+			step=0.1,
+			key=f"ww_{uid}", 
+			label_visibility="collapsed",
+			help="Window Width"
+		)
 	with col_wl:
-		panel_wl = st.number_input("WL", value=1.0, key=f"wl_{uid}", label_visibility="collapsed")
+		panel_wl = st.number_input(
+			"WL", 
+			value=1.0, 
+			min_value=-1000.0, 
+			max_value=1000.0, 
+			step=0.1,
+			key=f"wl_{uid}", 
+			label_visibility="collapsed",
+			help="Window Level"
+		)
 	with col_frame:
 		current_frame = st.slider(
 			"Frame",
@@ -403,8 +426,8 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	
 	# Use optimized single-frame rendering for instant display
 	if performance_mode:
-		# Fast mode: use responsive thumbnail size based on column count
-		max_size = 300 if num_cols <= 2 else 250 if num_cols == 3 else 200
+		# Fast mode: use responsive thumbnail size for better quality
+		max_size = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
 		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=max_size)
 	else:
 		# Quality mode: use full rendering with preloading (like IMAIOS)
@@ -412,8 +435,8 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 		# Pre-load adjacent frames for smoother scrolling
 		preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=2)
 	
-	# Use responsive image width based on column count
-	image_width = 300 if num_cols <= 2 else 250 if num_cols == 3 else 200
+	# Use responsive image width with larger size for wide mode
+	image_width = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
 	st.image(img, caption=f"{current_frame}/{num_frames}", width=image_width)
 
 
@@ -438,6 +461,14 @@ def main():
 	}
 	.element-container {
 		margin-bottom: 0.5rem;
+	}
+	/* Prevent grid overlap with better spacing */
+	.stImage {
+		margin-bottom: 1rem !important;
+	}
+	/* Add spacing between grid items */
+	[data-testid="column"] {
+		padding: 0.5rem !important;
 	}
 	/* Responsive file uploader */
 	.stFileUploader {
@@ -472,6 +503,25 @@ def main():
 	.stImage > img {
 		max-width: 100% !important;
 		height: auto !important;
+	}
+	/* Additional spacing for compact mode */
+	.stContainer {
+		margin-bottom: 1rem !important;
+		padding: 0.5rem !important;
+	}
+	/* Ensure proper spacing between grid elements */
+	div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
+		margin-bottom: 1rem !important;
+	}
+	/* Compact WW/WL controls styling */
+	.stNumberInput > div > div > input {
+		font-size: 0.8rem !important;
+		padding: 0.25rem !important;
+		height: 2rem !important;
+	}
+	.stNumberInput label {
+		font-size: 0.8rem !important;
+		font-weight: bold !important;
 	}
 	</style>
 	""", unsafe_allow_html=True)
