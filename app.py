@@ -203,19 +203,9 @@ def build_series_from_zip_blobs(zips: List[Tuple[str, bytes]]):
 	return group_dicoms_by_series(items)
 
 
-@st.cache_data(show_spinner=False, max_entries=5000)
-def pre_render_all_frames(frames: List[np.ndarray], ww: float, wl: float, zoom: int) -> List[Image.Image]:
-	"""Pre-render all frames for a series to eliminate jitter during slider movement"""
-	rendered_frames = []
-	for frame in frames:
-		img = pre_render_frame(frame, ww, wl, zoom)
-		rendered_frames.append(img)
-	return rendered_frames
-
-
-@st.cache_data(show_spinner=False, max_entries=2000)
-def pre_render_frame(frame: np.ndarray, ww: float, wl: float, zoom: int) -> Image.Image:
-	"""Pre-render frame with specific window settings and cache result"""
+@st.cache_data(show_spinner=False, max_entries=1000)
+def pre_render_frame_optimized(frame: np.ndarray, ww: float, wl: float, zoom: int) -> Image.Image:
+	"""Optimized frame rendering with faster processing"""
 	# Use faster normalization for real-time updates
 	arr = frame.astype(np.float32)
 	
@@ -242,12 +232,38 @@ def pre_render_frame(frame: np.ndarray, ww: float, wl: float, zoom: int) -> Imag
 		new_size = (int(img.width * scale), int(img.height * scale))
 		img = img.resize(new_size, Image.Resampling.LANCZOS)
 	
-	# Limit image size for faster rendering (max 400x400)
-	max_size = 400
+	# Limit image size for faster rendering (max 300x300 for smoother scrolling)
+	max_size = 300
 	if img.width > max_size or img.height > max_size:
 		img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
 	
 	return img
+
+
+@st.cache_data(show_spinner=False, max_entries=200)
+def get_frame_thumbnail(frame: np.ndarray, max_size: int = 200) -> Image.Image:
+	"""Create fast thumbnail for smooth dragging - no window/level processing"""
+	# Fast normalization without window/level for thumbnails
+	arr = frame.astype(np.float32)
+	arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)
+	arr = (arr * 255.0).astype(np.uint8)
+	img = Image.fromarray(arr)
+	img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
+	return img
+
+
+@st.cache_data(show_spinner=False, max_entries=50)
+def preload_adjacent_frames(frames: List[np.ndarray], current_idx: int, ww: float, wl: float, zoom: int, cache_range: int = 3) -> List[Image.Image]:
+	"""Pre-load adjacent frames for smoother scrolling (like IMAIOS viewer)"""
+	start_idx = max(0, current_idx - cache_range)
+	end_idx = min(len(frames), current_idx + cache_range + 1)
+	
+	preloaded = []
+	for i in range(start_idx, end_idx):
+		img = pre_render_frame_optimized(frames[i], ww, wl, zoom)
+		preloaded.append(img)
+	
+	return preloaded
 
 
 @st.cache_data(show_spinner=False)
@@ -259,7 +275,7 @@ def create_thumbnail(frame: np.ndarray, ww: float, wl: float, max_size: int = 20
 
 
 @st.fragment
-def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: float, g_zoom: int, panel_index: int, num_frames: int, num_cols: int):
+def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: float, g_zoom: int, panel_index: int, num_frames: int, num_cols: int, performance_mode: bool = True):
 	panel_key = f"grid_frame_{uid}"
 	if panel_key not in st.session_state:
 		st.session_state[panel_key] = 1
@@ -277,13 +293,20 @@ def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: floa
 		help=f"Navigate through {num_frames} frames"
 	)
 
-	# Get pre-rendered frames for instant display
+	# Render only the current frame for smoother scrolling
 	frames: List[np.ndarray] = gs["frames"]  # type: ignore
-	rendered_frames = pre_render_all_frames(frames, g_ww, g_wl, g_zoom)
 	frame_idx = current_frame - 1
 	
-	# Show pre-rendered image instantly (no processing delay)
-	img = rendered_frames[frame_idx]
+	# Use optimized single-frame rendering for instant display
+	if performance_mode:
+		# Fast mode: use thumbnail for smoother scrolling
+		img = get_frame_thumbnail(frames[frame_idx], max_size=250)
+	else:
+		# Quality mode: use full rendering with preloading (like IMAIOS)
+		img = pre_render_frame_optimized(frames[frame_idx], g_ww, g_wl, g_zoom)
+		# Pre-load adjacent frames for smoother scrolling
+		preload_adjacent_frames(frames, frame_idx, g_ww, g_wl, g_zoom, cache_range=2)
+	
 	st.image(img, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1}", use_container_width=True)
 
 
@@ -348,7 +371,7 @@ def main():
 			st.markdown("**Grid Controls**")
 			
 			# Control columns
-			col_gc1, col_gc2, col_gc3, col_gc4 = st.columns([2, 1, 1, 1])
+			col_gc1, col_gc2, col_gc3, col_gc4, col_gc5 = st.columns([2, 1, 1, 1, 1])
 			with col_gc1:
 				g_ww = st.number_input(
 					"Window Width (WW)", 
@@ -382,6 +405,14 @@ def main():
 					key="grid_cols",
 					help="Number of columns in the grid layout"
 				)
+			with col_gc5:
+				# Performance mode toggle
+				performance_mode = st.toggle(
+					"Fast Mode", 
+					value=True, 
+					key="performance_mode",
+					help="Enable for smoother scrolling (reduces image quality slightly). Quality mode includes frame preloading like IMAIOS viewer."
+				)
 
 			# Grid display
 			st.markdown("**Series Grid Display**")
@@ -396,10 +427,11 @@ def main():
 				if not g_frames:
 					continue
 				with grid_cols[i % num_cols]:
-					render_series_panel(uid, gs, g_ww, g_wl, g_zoom, i, len(g_frames), num_cols)
+					render_series_panel(uid, gs, g_ww, g_wl, g_zoom, i, len(g_frames), num_cols, performance_mode)
 			
 			# Grid summary
-			st.success(f"Grid displaying **{len(grid_selection)} series** with synchronized controls")
+			performance_status = "Fast Mode" if performance_mode else "Quality Mode + Preloading"
+			st.success(f"Grid displaying **{len(grid_selection)} series** with synchronized controls | **{performance_status}**")
 	else:
 		st.warning("**No DICOM series found** in the uploaded files. Please ensure your ZIP files contain valid DICOM data.")
 
