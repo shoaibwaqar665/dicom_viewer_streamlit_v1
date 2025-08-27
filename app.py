@@ -442,23 +442,6 @@ def main():
 			accept_multiple_files=True,
 			help="Select one or more ZIP files containing DICOM data"
 		)
-	# with col_info:
-	# 	if uploaded_files:
-	# 		# Display files with size information
-	# 		st.markdown("**Uploaded Files:**")
-	# 		for i, file in enumerate(uploaded_files):
-	# 			# Format file size
-	# 			file_size = file.size
-	# 			if file_size < 1024:
-	# 				size_str = f"{file_size} B"
-	# 			elif file_size < 1024**2:
-	# 				size_str = f"{file_size/1024:.1f} KB"
-	# 			else:
-	# 				size_str = f"{file_size/(1024**2):.1f} MB"
-				
-	# 			st.text(f"{file.name} ({size_str})")
-	# 	else:
-	# 		st.info("**No files selected**")
 	
 	if not uploaded_files:
 		st.info("**No files selected yet.** Please upload one or more ZIP files to begin DICOM analysis.")
@@ -480,7 +463,7 @@ def main():
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		
 		# Series selection with parallel columns control
-		col_series, col_columns = st.columns([3, 1])
+		col_series, col_columns = st.columns([11, 1])
 		with col_series:
 			grid_selection = st.multiselect(
 				"Select series",
