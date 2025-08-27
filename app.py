@@ -344,7 +344,7 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 
 
 @st.fragment
-def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: float, g_zoom: int, panel_index: int, num_frames: int, num_cols: int, performance_mode: bool = True):
+def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: float, panel_index: int, num_frames: int, num_cols: int, performance_mode: bool = True):
 	panel_key = f"grid_frame_{uid}"
 	if panel_key not in st.session_state:
 		st.session_state[panel_key] = 1
@@ -353,7 +353,24 @@ def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: floa
 	st.markdown(f"**{gs['modality']}** — {gs['series_desc']}")
 	st.caption(f"{gs['patient_name']} | {num_frames} frames")
 
-	# Frame slider with real-time updates
+	# Individual WW/WL controls for this panel
+	col_ww, col_wl = st.columns(2)
+	with col_ww:
+		panel_ww = st.number_input(
+			"WW", 
+			value=g_ww, 
+			key=f"ww_{uid}",
+			help="Window Width for this series"
+		)
+	with col_wl:
+		panel_wl = st.number_input(
+			"WL", 
+			value=g_wl, 
+			key=f"wl_{uid}",
+			help="Window Level for this series"
+		)
+
+	# Vertical frame slider
 	current_frame = st.slider(
 		f"Frame {gs['modality']}",
 		min_value=1,
@@ -368,13 +385,13 @@ def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: floa
 	
 	# Use optimized single-frame rendering for instant display
 	if performance_mode:
-		# Fast mode: use thumbnail for smoother scrolling
-		img = get_frame_thumbnail(frames[frame_idx], max_size=250)
+		# Fast mode: use thumbnail for smoother scrolling with panel-specific WW/WL
+		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=250)
 	else:
 		# Quality mode: use full rendering with preloading (like IMAIOS)
-		img = pre_render_frame_optimized(frames[frame_idx], g_ww, g_wl, g_zoom)
+		img = pre_render_frame_optimized(frames[frame_idx], panel_ww, panel_wl, 100)  # Fixed zoom at 100%
 		# Pre-load adjacent frames for smoother scrolling
-		preload_adjacent_frames(frames, frame_idx, g_ww, g_wl, g_zoom, cache_range=2)
+		preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=2)
 	
 	st.image(img, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1}", use_container_width=True)
 
@@ -441,32 +458,8 @@ def main():
 			st.markdown("**Grid Controls**")
 			
 			# Control columns
-			col_gc1, col_gc2, col_gc3, col_gc4, col_gc5 = st.columns([2, 1, 1, 1, 1])
+			col_gc1 = st.columns([1])[0]
 			with col_gc1:
-				g_ww = st.number_input(
-					"Window Width (WW)", 
-					value=float(1), 
-					key="grid_ww",
-					help="Adjust image contrast"
-				)
-			with col_gc2:
-				g_wl = st.number_input(
-					"Window Level (WL)", 
-					value=float(1), 
-					key="grid_wl",
-					help="Adjust image brightness"
-				)
-			with col_gc3:
-				g_zoom = st.slider(
-					"Zoom (%)", 
-					min_value=50, 
-					max_value=300, 
-					value=100, 
-					step=10, 
-					key="grid_zoom",
-					help="Zoom level for all grid images"
-				)
-			with col_gc4:
 				num_cols = st.slider(
 					"Columns", 
 					min_value=1, 
@@ -475,14 +468,9 @@ def main():
 					key="grid_cols",
 					help="Number of columns in the grid layout"
 				)
-			with col_gc5:
-				# Performance mode toggle
-				performance_mode = st.toggle(
-					"Fast Mode", 
-					value=True, 
-					key="performance_mode",
-					help="Enable for smoother scrolling (reduces image quality slightly). Quality mode includes frame preloading like IMAIOS viewer. Series with exactly 68 frames are filtered out."
-				)
+			
+			# Set performance mode to True by default (hidden from UI)
+			performance_mode = True
 
 			# Grid display
 			st.markdown("**Series Grid Display**")
@@ -497,7 +485,7 @@ def main():
 				if not g_frames:
 					continue
 				with grid_cols[i % num_cols]:
-					render_series_panel(uid, gs, g_ww, g_wl, g_zoom, i, len(g_frames), num_cols, performance_mode)
+					render_series_panel(uid, gs, 1.0, 1.0, i, len(g_frames), num_cols, performance_mode)
 			
 			# Grid summary
 			performance_status = "Fast Mode" if performance_mode else "Quality Mode + Preloading"
