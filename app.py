@@ -343,40 +343,50 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	st.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", use_container_width=True)
 
 
+def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List[str], num_cols: int, performance_mode: bool):
+	"""Create a compact table-based grid layout"""
+	# Calculate number of rows needed
+	num_series = len(grid_selection)
+	num_rows = (num_series + num_cols - 1) // num_cols
+	
+	# Create table rows
+	for row in range(num_rows):
+		cols = st.columns(num_cols)
+		for col in range(num_cols):
+			series_idx = row * num_cols + col
+			if series_idx < num_series:
+				uid = grid_selection[series_idx]
+				gs = series[uid]
+				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
+				if g_frames:
+					with cols[col]:
+						render_compact_series_panel(uid, gs, series_idx, len(g_frames), performance_mode)
+
+
 @st.fragment
-def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: float, panel_index: int, num_frames: int, num_cols: int, performance_mode: bool = True):
+def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: int, num_frames: int, performance_mode: bool = True):
 	panel_key = f"grid_frame_{uid}"
 	if panel_key not in st.session_state:
 		st.session_state[panel_key] = 1
 
-	# Series info header
-	st.markdown(f"**{gs['modality']}** — {gs['series_desc']}")
-	st.caption(f"{gs['patient_name']} | {num_frames} frames")
+	# Compact series info
+	st.markdown(f"**{gs['modality']}** {gs['series_desc']}")
+	st.caption(f"{gs['patient_name']} ({num_frames} frames)")
 
-	# Individual WW/WL controls for this panel
+	# Compact WW/WL controls
 	col_ww, col_wl = st.columns(2)
 	with col_ww:
-		panel_ww = st.number_input(
-			"WW", 
-			value=g_ww, 
-			key=f"ww_{uid}",
-			help="Window Width for this series"
-		)
+		panel_ww = st.number_input("WW", value=1.0, key=f"ww_{uid}", label_visibility="collapsed")
 	with col_wl:
-		panel_wl = st.number_input(
-			"WL", 
-			value=g_wl, 
-			key=f"wl_{uid}",
-			help="Window Level for this series"
-		)
+		panel_wl = st.number_input("WL", value=1.0, key=f"wl_{uid}", label_visibility="collapsed")
 
-	# Vertical frame slider
+	# Compact frame slider
 	current_frame = st.slider(
-		f"Frame {gs['modality']}",
+		"Frame",
 		min_value=1,
 		max_value=num_frames,
 		key=panel_key,
-		help=f"Navigate through {num_frames} frames"
+		label_visibility="collapsed"
 	)
 
 	# Render only the current frame for smoother scrolling
@@ -393,7 +403,7 @@ def render_series_panel(uid: str, gs: Dict[str, object], g_ww: float, g_wl: floa
 		# Pre-load adjacent frames for smoother scrolling
 		preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=2)
 	
-	st.image(img, caption=f"Frame {current_frame}/{num_frames} | Series {panel_index+1}", use_container_width=True)
+	st.image(img, caption=f"{current_frame}/{num_frames}", use_container_width=True)
 
 
 def main():
@@ -403,9 +413,8 @@ def main():
 		initial_sidebar_state="collapsed"
 	)
 	
-	# Enhanced header
+	# Compact header
 	st.title("DICOM Grid Viewer")
-	st.caption("Advanced multi-series DICOM visualization with synchronized controls")
 	
 	# File upload section
 	uploaded_files = st.file_uploader(
@@ -428,68 +437,26 @@ def main():
 	filtered_count = len(all_series) - len(series)
 	
 	if series:
-		st.subheader("DICOM Series Analysis")
-		st.success(f"**{len(series)} DICOM series** detected and processed successfully!")
-		if filtered_count > 0:
-			pass
-			# st.info(f"ℹ️ **Note:** {filtered_count} series with exactly 68 frames have been filtered out. Only series with frame counts other than 68 are displayed.")
-		
-		# Grid view section
-		st.subheader("Multi-Series Grid View")
+		st.success(f"**{len(series)} DICOM series** detected")
 		
 		uid_list = list(series.keys())
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		
 		# Series selection
-		col1, col2 = st.columns([3, 1])
-		with col1:
-			grid_selection = st.multiselect(
-				"Select series for grid display",
-				options=uid_list,
-				format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}",
-				help="Choose which DICOM series to display in the grid"
-			)
-		with col2:
-			if grid_selection:
-				st.metric("Selected Series", len(grid_selection))
+		grid_selection = st.multiselect(
+			"Select series",
+			options=uid_list,
+			format_func=lambda u: f"{patients_map[u]} — {series[u]['modality']} {series[u]['series_desc']}",
+			help="Choose which DICOM series to display"
+		)
 		
 		if grid_selection:
-			# Control panel
-			st.markdown("**Grid Controls**")
-			
-			# Control columns
-			col_gc1 = st.columns([1])[0]
-			with col_gc1:
-				num_cols = st.slider(
-					"Columns", 
-					min_value=1, 
-					max_value=4, 
-					value=4, 
-					key="grid_cols",
-					help="Number of columns in the grid layout"
-				)
-			
-			# Set performance mode to True by default (hidden from UI)
+			# Compact controls
+			num_cols = st.slider("Columns", min_value=1, max_value=4, value=4, key="grid_cols")
 			performance_mode = True
 
-			# Grid display
-			st.markdown("**Series Grid Display**")
-			
-			# Create grid columns
-			grid_cols = st.columns(num_cols)
-			
-			# Render each selected series using isolated fragments
-			for i, uid in enumerate(grid_selection):
-				gs = series[uid]
-				g_frames: List[np.ndarray] = gs["frames"]  # type: ignore
-				if not g_frames:
-					continue
-				with grid_cols[i % num_cols]:
-					render_series_panel(uid, gs, 1.0, 1.0, i, len(g_frames), num_cols, performance_mode)
-			
-			# Grid summary
-			performance_status = "Fast Mode" if performance_mode else "Quality Mode + Preloading"
-			st.success(f"Grid displaying **{len(grid_selection)} series** with synchronized controls | **{performance_status}**")
+			# Create table-based grid
+			create_table_grid(series, grid_selection, num_cols, performance_mode)
 	else:
 		st.warning("**No DICOM series found** in the uploaded files. Please ensure your ZIP files contain valid DICOM data.")
 
