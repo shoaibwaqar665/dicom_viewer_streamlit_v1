@@ -447,14 +447,20 @@ def main():
 		initial_sidebar_state="collapsed"
 	)
 	
-	# Add custom CSS for responsive layout
+	# Add custom CSS for forced wide mode and responsive layout
 	st.markdown("""
 	<style>
+	/* Force wide mode layout */
 	.main .block-container {
+		max-width: 100% !important;
 		padding-top: 0.5rem;
 		padding-bottom: 1rem;
-		padding-left: 1rem;
-		padding-right: 1rem;
+		padding-left: 2rem;
+		padding-right: 2rem;
+	}
+	/* Ensure full width utilization */
+	.stApp > div {
+		max-width: 100% !important;
 	}
 	.stImage > img {
 		border-radius: 0.5rem;
@@ -523,6 +529,10 @@ def main():
 		font-size: 0.8rem !important;
 		font-weight: bold !important;
 	}
+	/* Hide settings menu */
+	#MainMenu {visibility: hidden;}
+	footer {visibility: hidden;}
+	header {visibility: hidden;}
 	</style>
 	""", unsafe_allow_html=True)
 	
@@ -557,7 +567,7 @@ def main():
 		patients_map = {uid: f"{series[uid]['patient_name']} ({series[uid]['patient_id']})" for uid in uid_list}
 		
 		# Series selection with responsive layout
-		col_series, col_columns = st.columns([3, 1])
+		col_series, col_columns = st.columns([11, 1])
 		with col_series:
 			grid_selection = st.multiselect(
 				"Select series",
