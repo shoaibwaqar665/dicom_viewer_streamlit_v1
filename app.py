@@ -259,7 +259,7 @@ def get_frame_thumbnail(frame: np.ndarray, max_size: int = 200) -> Image.Image:
 	return img
 
 
-@st.cache_data(show_spinner=False, max_entries=50)
+@st.cache_data(show_spinner=False, max_entries=100)
 def preload_adjacent_frames(frames: List[np.ndarray], current_idx: int, ww: float, wl: float, zoom: int, cache_range: int = 3) -> List[Image.Image]:
 	"""Pre-load adjacent frames for smoother scrolling (like IMAIOS viewer)"""
 	start_idx = max(0, current_idx - cache_range)
@@ -267,8 +267,24 @@ def preload_adjacent_frames(frames: List[np.ndarray], current_idx: int, ww: floa
 	
 	preloaded = []
 	for i in range(start_idx, end_idx):
-		img = pre_render_frame_optimized(frames[i], ww, wl, zoom)
-		preloaded.append(img)
+		if i != current_idx:  # Don't re-render current frame
+			img = pre_render_frame_optimized(frames[i], ww, wl, zoom)
+			preloaded.append(img)
+	
+	return preloaded
+
+
+@st.cache_data(show_spinner=False, max_entries=200)
+def preload_instant_thumbnails(frames: List[np.ndarray], current_idx: int, max_size: int = 250, cache_range: int = 5) -> List[Image.Image]:
+	"""Pre-load instant thumbnails for ultra-smooth scrolling"""
+	start_idx = max(0, current_idx - cache_range)
+	end_idx = min(len(frames), current_idx + cache_range + 1)
+	
+	preloaded = []
+	for i in range(start_idx, end_idx):
+		if i != current_idx:  # Don't re-render current frame
+			img = create_instant_thumbnail(frames[i], max_size)
+			preloaded.append(img)
 	
 	return preloaded
 
@@ -296,6 +312,19 @@ def sample_frames_for_large_series(frames: List[np.ndarray], max_frames: int = 2
 	return sampled
 
 
+@st.cache_data(show_spinner=False, max_entries=50)
+def progressive_frame_loading(frames: List[np.ndarray], current_idx: int, load_range: int = 10) -> List[np.ndarray]:
+	"""Progressive loading for large series - load frames in chunks around current position"""
+	if len(frames) <= load_range:
+		return frames
+	
+	start_idx = max(0, current_idx - load_range // 2)
+	end_idx = min(len(frames), start_idx + load_range)
+	
+	# Return a subset of frames around the current position
+	return frames[start_idx:end_idx]
+
+
 @st.cache_data(show_spinner=False, max_entries=200)
 def create_compact_thumbnail(frame: np.ndarray, max_size: int = 150) -> Image.Image:
 	"""Create very small thumbnail for compact large series display"""
@@ -308,11 +337,49 @@ def create_compact_thumbnail(frame: np.ndarray, max_size: int = 150) -> Image.Im
 	return img
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=500)
+def create_instant_thumbnail(frame: np.ndarray, max_size: int = 250) -> Image.Image:
+	"""Create instant thumbnail for real-time slider feedback - fastest possible rendering"""
+	# Ultra-fast normalization using numpy operations
+	arr = frame.astype(np.float32)
+	# Use faster min/max calculation with numpy's built-in functions
+	min_val, max_val = np.min(arr), np.max(arr)
+	if max_val > min_val:
+		arr = (arr - min_val) / (max_val - min_val)
+	else:
+		arr = arr - min_val
+	arr = (arr * 255.0).astype(np.uint8)
+	
+	# Create image and resize in one step for better performance
+	img = Image.fromarray(arr)
+	# Use NEAREST for fastest resizing, and calculate optimal size
+	if img.width > max_size or img.height > max_size:
+		img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
+	
+	return img
+
+
+@st.cache_data(show_spinner=False, max_entries=300)
 def create_thumbnail(frame: np.ndarray, ww: float, wl: float, max_size: int = 200) -> Image.Image:
 	"""Create fast thumbnail for smooth dragging"""
-	img = Image.fromarray(normalize_to_uint8(frame, ww=ww, wl=wl))
-	img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
+	# Optimize for common case where ww=1, wl=1 (default settings)
+	if ww == 1.0 and wl == 1.0:
+		# Fast path for default settings
+		arr = frame.astype(np.float32)
+		min_val, max_val = np.min(arr), np.max(arr)
+		if max_val > min_val:
+			arr = (arr - min_val) / (max_val - min_val)
+		else:
+			arr = arr - min_val
+		arr = (arr * 255.0).astype(np.uint8)
+	else:
+		# Use window/level normalization
+		arr = normalize_to_uint8(frame, ww=ww, wl=wl)
+	
+	img = Image.fromarray(arr)
+	# Only resize if necessary
+	if img.width > max_size or img.height > max_size:
+		img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
 	return img
 
 
@@ -340,14 +407,21 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 		help=f"Navigate through {len(sampled_frames)} sampled frames from {num_frames} total frames"
 	)
 
-	# Render compact thumbnail
+	# Real-time slider with instant feedback
 	frame_idx = current_frame - 1
-	img = create_compact_thumbnail(sampled_frames[frame_idx], max_size=150)
+	
+	# Show instant thumbnail first
+	instant_img = create_instant_thumbnail(sampled_frames[frame_idx], max_size=150)
+	image_placeholder = st.empty()
 	
 	# Calculate actual frame number from sampling
 	actual_frame_num = (frame_idx * len(frames)) // len(sampled_frames) + 1
 	
-	st.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", width=400)
+	image_placeholder.image(instant_img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1} (Loading...)", width=400)
+	
+	# Then load the full-quality compact thumbnail
+	img = create_compact_thumbnail(sampled_frames[frame_idx], max_size=150)
+	image_placeholder.image(img, caption=f"Frame {actual_frame_num}/{num_frames} (Sampled) | Series {panel_index+1}", width=400)
 
 
 def create_table_grid(series: Dict[str, Dict[str, object]], grid_selection: List[str], num_cols: int, performance_mode: bool):
@@ -431,20 +505,30 @@ def render_compact_series_panel(uid: str, gs: Dict[str, object], panel_index: in
 	frames: List[np.ndarray] = gs["frames"]  # type: ignore
 	frame_idx = current_frame - 1
 	
-	# Use optimized single-frame rendering for instant display
+	# Real-time slider implementation with instant feedback
+	# First, show instant thumbnail for immediate response
+	max_size = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
+	instant_img = create_instant_thumbnail(frames[frame_idx], max_size=max_size)
+	
+	# Display the instant thumbnail immediately
+	image_width = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
+	image_placeholder = st.empty()
+	image_placeholder.image(instant_img, caption=f"{current_frame}/{num_frames} (Loading...)", width=image_width)
+	
+	# Pre-load adjacent frames for smoother scrolling (background task)
+	preload_instant_thumbnails(frames, frame_idx, max_size, cache_range=5)
+	preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=3)
+	
+	# Then load the full-quality image in the background
 	if performance_mode:
 		# Fast mode: use responsive thumbnail size for better quality
-		max_size = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
 		img = create_thumbnail(frames[frame_idx], panel_ww, panel_wl, max_size=max_size)
 	else:
 		# Quality mode: use full rendering with preloading (like IMAIOS)
 		img = pre_render_frame_optimized(frames[frame_idx], panel_ww, panel_wl, 100)  # Fixed zoom at 100%
-		# Pre-load adjacent frames for smoother scrolling
-		preload_adjacent_frames(frames, frame_idx, panel_ww, panel_wl, 100, cache_range=2)
 	
-	# Use responsive image width with larger size for wide mode
-	image_width = 350 if num_cols <= 2 else 250 if num_cols == 3 else 250
-	st.image(img, caption=f"{current_frame}/{num_frames}", width=image_width)
+	# Update with the full-quality image
+	image_placeholder.image(img, caption=f"{current_frame}/{num_frames}", width=image_width)
 
 
 def main():
