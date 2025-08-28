@@ -1,0 +1,328 @@
+import React, { forwardRef, useEffect, useRef, useImperativeHandle, useState, useCallback } from 'react';
+import styled from 'styled-components';
+import { motion } from 'framer-motion';
+import { useCornerstone } from '../context/CornerstoneContext';
+import { DICOMFrame } from '../context/DICOMContext';
+
+const ViewerContainer = styled.div`
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background-color: #000000;
+  overflow: hidden;
+`;
+
+const CornerstoneElement = styled.div`
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const Canvas = styled.canvas`
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background-color: #000000;
+`;
+
+const Overlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+`;
+
+const FrameInfo = styled(motion.div)`
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #fafafa;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+`;
+
+const LoadingIndicator = styled(motion.div)`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+`;
+
+const LoadingSpinner = styled(motion.div)`
+  width: 40px;
+  height: 40px;
+  border: 3px solid #3d4043;
+  border-top: 3px solid #00d4aa;
+  border-radius: 50%;
+`;
+
+const LoadingText = styled.div`
+  color: #fafafa;
+  font-weight: 600;
+`;
+
+const ErrorMessage = styled(motion.div)`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(248, 113, 113, 0.1);
+  border: 1px solid #f87171;
+  color: #f87171;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  text-align: center;
+  max-width: 400px;
+`;
+
+interface Viewer2DProps {
+  frames: DICOMFrame[];
+  currentFrameIndex: number;
+  windowWidth: number;
+  windowLevel: number;
+  zoom: number;
+}
+
+export interface Viewer2DRef {
+  resetView: () => void;
+  setWindowLevel: (ww: number, wl: number) => void;
+  setZoom: (zoom: number) => void;
+}
+
+const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
+  frames,
+  currentFrameIndex,
+  windowWidth,
+  windowLevel,
+  zoom
+}, ref) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cornerstoneElementRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { state: cornerstoneState, setupViewport, setWindowLevel, setZoom, resetView } = useCornerstone();
+  
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [imageIds, setImageIds] = React.useState<string[]>([]);
+  const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
+
+  // Load and display image on canvas
+  const loadAndDisplayImage = useCallback(async (imageDataUrl: string) => {
+    if (!canvasRef.current) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = canvasRef.current!;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Set canvas size to match container
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+
+      // Clear canvas
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Calculate image position to center it
+      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      const scaledWidth = img.width * scale;
+      const scaledHeight = img.height * scale;
+      const x = (canvas.width - scaledWidth) / 2;
+      const y = (canvas.height - scaledHeight) / 2;
+
+      // Draw image
+      ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+      setCurrentImage(img);
+    };
+    img.onerror = () => {
+      setError('Failed to load image');
+    };
+    img.src = imageDataUrl;
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    resetView: () => {
+      resetView();
+    },
+    setWindowLevel: (ww: number, wl: number) => {
+      setWindowLevel(ww, wl);
+    },
+    setZoom: (zoom: number) => {
+      setZoom(zoom);
+    }
+  }));
+
+  // Convert frames to Cornerstone image IDs
+  useEffect(() => {
+    if (frames.length === 0) return;
+
+    const newImageIds = frames.map((frame, index) => {
+      // Create a data URL from the base64 frame data
+      return `data:image/png;base64,${frame.data}`;
+    });
+
+    setImageIds(newImageIds);
+  }, [frames]);
+
+  // Setup viewport when image IDs are ready
+  useEffect(() => {
+    if (imageIds.length === 0 || !cornerstoneElementRef.current || isLoading) return;
+
+    const setupViewer = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        await setupViewport(cornerstoneElementRef.current!, imageIds);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to setup viewport');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    setupViewer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageIds, isLoading]); // setupViewport is stable due to useCallback
+
+  // Update window/level when props change
+  useEffect(() => {
+    if (cornerstoneState.isInitialized && windowWidth && windowLevel) {
+      setWindowLevel(windowWidth, windowLevel);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowWidth, windowLevel, cornerstoneState.isInitialized]); // setWindowLevel is stable
+
+  // Update zoom when props change
+  useEffect(() => {
+    if (cornerstoneState.isInitialized && zoom) {
+      setZoom(zoom);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom, cornerstoneState.isInitialized]); // setZoom is stable
+
+  // Handle frame changes
+  useEffect(() => {
+    if (currentFrameIndex >= 0 && currentFrameIndex < frames.length && imageIds.length > 0) {
+      try {
+        console.log(`Changing to frame ${currentFrameIndex}`);
+        const imageDataUrl = imageIds[currentFrameIndex];
+        if (imageDataUrl) {
+          loadAndDisplayImage(imageDataUrl);
+        }
+      } catch (err) {
+        console.error('Failed to change frame:', err);
+        setError('Failed to load frame');
+      }
+    }
+  }, [currentFrameIndex, frames.length, imageIds, loadAndDisplayImage]);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (currentImage && canvasRef.current) {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const container = containerRef.current;
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+        }
+
+        // Redraw the current image
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const scale = Math.min(canvas.width / currentImage.width, canvas.height / currentImage.height);
+        const scaledWidth = currentImage.width * scale;
+        const scaledHeight = currentImage.height * scale;
+        const x = (canvas.width - scaledWidth) / 2;
+        const y = (canvas.height - scaledHeight) / 2;
+
+        ctx.drawImage(currentImage, x, y, scaledWidth, scaledHeight);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [currentImage]);
+
+  const currentFrame = frames[currentFrameIndex];
+
+  return (
+    <ViewerContainer ref={containerRef}>
+      <CornerstoneElement ref={cornerstoneElementRef}>
+        <Canvas ref={canvasRef} />
+      </CornerstoneElement>
+      
+      <Overlay>
+        {currentFrame && (
+          <FrameInfo
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            Frame {currentFrameIndex + 1} / {frames.length}
+            <br />
+            {currentFrame.width} × {currentFrame.height}
+          </FrameInfo>
+        )}
+      </Overlay>
+
+      {isLoading && (
+        <LoadingIndicator
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <LoadingSpinner
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          />
+          <LoadingText>Loading DICOM viewer...</LoadingText>
+        </LoadingIndicator>
+      )}
+
+      {error && (
+        <ErrorMessage
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+        >
+          {error}
+        </ErrorMessage>
+      )}
+
+      {frames.length === 0 && !isLoading && !error && (
+        <LoadingIndicator>
+          <LoadingText>No DICOM frames available</LoadingText>
+        </LoadingIndicator>
+      )}
+    </ViewerContainer>
+  );
+});
+
+Viewer2D.displayName = 'Viewer2D';
+
+export default Viewer2D;

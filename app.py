@@ -8,9 +8,6 @@ import pydicom
 from pydicom.valuerep import PersonName
 from PIL import Image
 import streamlit as st
-from pdf2image import convert_from_bytes
-import time
-from functools import lru_cache
 
 # -------------------------------
 # Helpers

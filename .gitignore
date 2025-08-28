@@ -1,2 +1,14 @@
 .venv
 run.sh
+node_modules/
+myenv/
+build/
+dist/
+*.egg-info/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+start_all.sh
+start_frontend.sh
