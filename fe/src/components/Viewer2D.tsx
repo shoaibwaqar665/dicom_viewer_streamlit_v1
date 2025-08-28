@@ -116,6 +116,37 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
   const [imageIds, setImageIds] = React.useState<string[]>([]);
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
 
+  // Apply window/level to image data
+  const applyWindowLevel = useCallback((imageData: ImageData, windowWidth: number, windowLevel: number) => {
+    const data = imageData.data;
+    const windowMin = windowLevel - windowWidth / 2;
+    const windowMax = windowLevel + windowWidth / 2;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Get the grayscale value (assuming grayscale image)
+      const gray = data[i]; // Red channel for grayscale
+      
+      // Apply window/level transformation
+      let newValue;
+      if (gray <= windowMin) {
+        newValue = 0;
+      } else if (gray >= windowMax) {
+        newValue = 255;
+      } else {
+        // Linear mapping within window
+        newValue = Math.round(((gray - windowMin) / (windowMax - windowMin)) * 255);
+      }
+      
+      // Apply to all RGB channels for grayscale
+      data[i] = newValue;     // Red
+      data[i + 1] = newValue; // Green
+      data[i + 2] = newValue; // Blue
+      // Alpha channel remains unchanged
+    }
+    
+    return imageData;
+  }, []);
+
   // Load and display image on canvas with window/level adjustment
   const loadAndDisplayImage = useCallback(async (imageDataUrl: string, ww?: number, wl?: number) => {
     if (!canvasRef.current) return;
@@ -145,16 +176,16 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
       const x = (canvas.width - scaledWidth) / 2;
       const y = (canvas.height - scaledHeight) / 2;
 
-      // Apply window/level if provided
-      if (ww && wl) {
-        ctx.filter = `contrast(${ww / 100}) brightness(${wl / 100})`;
-      }
-
-      // Draw image
+      // Draw image first
       ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
       
-      // Reset filter for next draw
-      ctx.filter = 'none';
+      // Apply window/level if provided
+      if (ww && wl) {
+        // Get image data from the drawn area
+        const imageData = ctx.getImageData(x, y, scaledWidth, scaledHeight);
+        const adjustedImageData = applyWindowLevel(imageData, ww, wl);
+        ctx.putImageData(adjustedImageData, x, y);
+      }
       
       setCurrentImage(img);
     };
@@ -162,7 +193,7 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
       setError('Failed to load image');
     };
     img.src = imageDataUrl;
-  }, []);
+  }, [applyWindowLevel]);
 
   useImperativeHandle(ref, () => ({
     resetView: () => {

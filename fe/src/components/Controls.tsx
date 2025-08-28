@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 import { DICOMSeries, DICOMFrame } from '../context/DICOMContext';
 
@@ -149,30 +149,7 @@ const ValueDisplay = styled.span`
   text-align: right;
 `;
 
-const PlaybackControls = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-`;
 
-const PlayButton = styled.button<{ isPlaying: boolean }>`
-  background-color: ${props => props.isPlaying ? '#f87171' : '#00d4aa'};
-  color: #0e1117;
-  border: none;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background-color: ${props => props.isPlaying ? '#ef4444' : '#00b894'};
-    transform: scale(1.1);
-  }
-`;
 
 const FrameInfo = styled.div`
   background-color: rgba(0, 212, 170, 0.1);
@@ -209,14 +186,10 @@ interface ControlsProps {
   currentFrameIndex: number;
   windowWidth: number;
   windowLevel: number;
-  isPlaying: boolean;
-  playSpeed: number;
   gridSize: number;
   onFrameChange: (index: number) => void;
   onWindowWidthChange: (ww: number) => void;
   onWindowLevelChange: (wl: number) => void;
-  onPlayToggle: () => void;
-  onPlaySpeedChange: (speed: number) => void;
   onResetView: () => void;
   onToggleMetadata: () => void;
   onGridSizeChange: (size: number) => void;
@@ -228,30 +201,15 @@ export default function Controls({
   currentFrameIndex,
   windowWidth,
   windowLevel,
-  isPlaying,
-  playSpeed,
   gridSize,
   onFrameChange,
   onWindowWidthChange,
   onWindowLevelChange,
-  onPlayToggle,
-  onPlaySpeedChange,
   onResetView,
   onToggleMetadata,
   onGridSizeChange
 }: ControlsProps) {
-  // Auto-play effect
-  useEffect(() => {
-    if (!isPlaying || frames.length === 0) return;
 
-    const interval = setInterval(() => {
-      const nextIndex = (currentFrameIndex + 1) % frames.length;
-      onFrameChange(nextIndex);
-    }, 1000 / playSpeed);
-
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, currentFrameIndex, frames.length, playSpeed]); // onFrameChange is stable from parent
 
   const currentFrame = frames[currentFrameIndex];
 
@@ -288,27 +246,6 @@ export default function Controls({
             />
             <ValueDisplay>{currentFrameIndex + 1}/{frames.length}</ValueDisplay>
           </ControlRow>
-          
-          <PlaybackControls>
-            <PlayButton
-              isPlaying={isPlaying}
-              onClick={onPlayToggle}
-              title={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? '⏸️' : '▶️'}
-            </PlayButton>
-            
-            <Label>Speed:</Label>
-            <Slider
-              type="range"
-              min={0.1}
-              max={5.0}
-              step={0.1}
-              value={playSpeed}
-              onChange={(e) => onPlaySpeedChange(parseFloat(e.target.value))}
-            />
-            <ValueDisplay>{playSpeed.toFixed(1)}x</ValueDisplay>
-          </PlaybackControls>
         </ControlGroup>
       </Section>
 
@@ -319,9 +256,9 @@ export default function Controls({
             <Label>WW:</Label>
             <Input
               type="number"
-              min={0.1}
-              max={1000}
-              step={0.1}
+              min={1}
+              max={2000}
+              step={1}
               value={windowWidth}
               onChange={(e) => onWindowWidthChange(parseFloat(e.target.value))}
             />
@@ -332,7 +269,7 @@ export default function Controls({
               type="number"
               min={-1000}
               max={1000}
-              step={0.1}
+              step={1}
               value={windowLevel}
               onChange={(e) => onWindowLevelChange(parseFloat(e.target.value))}
             />
@@ -357,18 +294,6 @@ export default function Controls({
                 style={{ backgroundColor: gridSize === 2 ? '#00d4aa' : '#262730' }}
               >
                 2×2
-              </Button>
-              <Button 
-                onClick={() => onGridSizeChange(3)}
-                style={{ backgroundColor: gridSize === 3 ? '#00d4aa' : '#262730' }}
-              >
-                3×3
-              </Button>
-              <Button 
-                onClick={() => onGridSizeChange(4)}
-                style={{ backgroundColor: gridSize === 4 ? '#00d4aa' : '#262730' }}
-              >
-                4×4
               </Button>
             </ButtonGroup>
           </ControlRow>

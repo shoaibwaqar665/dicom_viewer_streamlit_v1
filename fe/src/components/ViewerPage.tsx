@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDICOM } from '../context/DICOMContext';
 import SeriesList from './SeriesList';
 import Viewer2D, { Viewer2DRef } from './Viewer2D';
+import GridViewer, { GridViewerRef } from './GridViewer';
 
 import Controls from './Controls';
 import MetadataPanel from './MetadataPanel';
@@ -135,6 +136,7 @@ export default function ViewerPage() {
   const [showMetadata, setShowMetadata] = useState(false);
   
   const viewer2DRef = useRef<Viewer2DRef>(null);
+  const gridViewerRef = useRef<GridViewerRef>(null);
 
   useEffect(() => {
     if (!state.session) {
@@ -175,14 +177,10 @@ export default function ViewerPage() {
             currentFrameIndex={state.currentFrameIndex}
             windowWidth={state.windowWidth}
             windowLevel={state.windowLevel}
-            isPlaying={state.isPlaying}
-            playSpeed={state.playSpeed}
             gridSize={state.gridSize}
             onFrameChange={(index) => dispatch({ type: 'SET_CURRENT_FRAME', payload: index })}
             onWindowWidthChange={(ww) => dispatch({ type: 'SET_WINDOW_WIDTH', payload: ww })}
             onWindowLevelChange={(wl) => dispatch({ type: 'SET_WINDOW_LEVEL', payload: wl })}
-            onPlayToggle={() => dispatch({ type: 'SET_PLAYING', payload: !state.isPlaying })}
-            onPlaySpeedChange={(speed) => dispatch({ type: 'SET_PLAY_SPEED', payload: speed })}
             onResetView={() => dispatch({ type: 'RESET_VIEW' })}
             onToggleMetadata={() => setShowMetadata(!showMetadata)}
             onGridSizeChange={(size) => dispatch({ type: 'SET_GRID_SIZE', payload: size })}
@@ -201,20 +199,38 @@ export default function ViewerPage() {
         </TopBar>
 
         <ViewerContainer>
-          <Viewer2DContainer
-            isActive={true}
-            initial={{ opacity: 0, x: -50 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Viewer2D
-              ref={viewer2DRef}
-              frames={state.frames}
-              currentFrameIndex={state.currentFrameIndex}
-              windowWidth={state.windowWidth}
-              windowLevel={state.windowLevel}
-            />
-          </Viewer2DContainer>
+          {state.gridSize === 1 ? (
+            <Viewer2DContainer
+              isActive={true}
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Viewer2D
+                ref={viewer2DRef}
+                frames={state.frames}
+                currentFrameIndex={state.currentFrameIndex}
+                windowWidth={state.windowWidth}
+                windowLevel={state.windowLevel}
+              />
+            </Viewer2DContainer>
+          ) : (
+            <Viewer2DContainer
+              isActive={true}
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <GridViewer
+                ref={gridViewerRef}
+                frames={state.frames}
+                currentFrameIndex={state.currentFrameIndex}
+                windowWidth={state.windowWidth}
+                windowLevel={state.windowLevel}
+                gridSize={state.gridSize}
+              />
+            </Viewer2DContainer>
+          )}
 
           {state.isLoading && (
             <LoadingOverlay
