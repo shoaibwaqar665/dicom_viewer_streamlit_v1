@@ -93,34 +93,31 @@ interface Viewer2DProps {
   currentFrameIndex: number;
   windowWidth: number;
   windowLevel: number;
-  zoom: number;
 }
 
 export interface Viewer2DRef {
   resetView: () => void;
   setWindowLevel: (ww: number, wl: number) => void;
-  setZoom: (zoom: number) => void;
 }
 
 const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
   frames,
   currentFrameIndex,
   windowWidth,
-  windowLevel,
-  zoom
+  windowLevel
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const cornerstoneElementRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { state: cornerstoneState, setupViewport, setWindowLevel, setZoom, resetView } = useCornerstone();
+  const { state: cornerstoneState, setupViewport, setWindowLevel, resetView } = useCornerstone();
   
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [imageIds, setImageIds] = React.useState<string[]>([]);
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
 
-  // Load and display image on canvas
-  const loadAndDisplayImage = useCallback(async (imageDataUrl: string) => {
+  // Load and display image on canvas with window/level adjustment
+  const loadAndDisplayImage = useCallback(async (imageDataUrl: string, ww?: number, wl?: number) => {
     if (!canvasRef.current) return;
 
     const img = new Image();
@@ -148,8 +145,17 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
       const x = (canvas.width - scaledWidth) / 2;
       const y = (canvas.height - scaledHeight) / 2;
 
+      // Apply window/level if provided
+      if (ww && wl) {
+        ctx.filter = `contrast(${ww / 100}) brightness(${wl / 100})`;
+      }
+
       // Draw image
       ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+      
+      // Reset filter for next draw
+      ctx.filter = 'none';
+      
       setCurrentImage(img);
     };
     img.onerror = () => {
@@ -164,9 +170,6 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
     },
     setWindowLevel: (ww: number, wl: number) => {
       setWindowLevel(ww, wl);
-    },
-    setZoom: (zoom: number) => {
-      setZoom(zoom);
     }
   }));
 
@@ -205,19 +208,16 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
 
   // Update window/level when props change
   useEffect(() => {
-    if (cornerstoneState.isInitialized && windowWidth && windowLevel) {
-      setWindowLevel(windowWidth, windowLevel);
+    if (currentFrameIndex >= 0 && currentFrameIndex < frames.length && imageIds.length > 0 && windowWidth && windowLevel) {
+      const imageDataUrl = imageIds[currentFrameIndex];
+      if (imageDataUrl) {
+        loadAndDisplayImage(imageDataUrl, windowWidth, windowLevel);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [windowWidth, windowLevel, cornerstoneState.isInitialized]); // setWindowLevel is stable
+  }, [windowWidth, windowLevel, currentFrameIndex, frames.length, imageIds]); // loadAndDisplayImage is stable
 
-  // Update zoom when props change
-  useEffect(() => {
-    if (cornerstoneState.isInitialized && zoom) {
-      setZoom(zoom);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, cornerstoneState.isInitialized]); // setZoom is stable
+
 
   // Handle frame changes
   useEffect(() => {

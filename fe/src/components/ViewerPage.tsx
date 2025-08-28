@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDICOM } from '../context/DICOMContext';
 import SeriesList from './SeriesList';
 import Viewer2D, { Viewer2DRef } from './Viewer2D';
-import Viewer3D, { Viewer3DRef } from './Viewer3D';
+
 import Controls from './Controls';
 import MetadataPanel from './MetadataPanel';
 
@@ -45,11 +45,7 @@ const Viewer2DContainer = styled(motion.div)<{ isActive: boolean }>`
   display: ${props => props.isActive ? 'block' : 'none'};
 `;
 
-const Viewer3DContainer = styled(motion.div)<{ isActive: boolean }>`
-  flex: 1;
-  position: relative;
-  display: ${props => props.isActive ? 'block' : 'none'};
-`;
+
 
 const TopBar = styled.div`
   height: 60px;
@@ -68,29 +64,7 @@ const Title = styled.h1`
   margin: 0;
 `;
 
-const ViewToggle = styled.div`
-  display: flex;
-  background-color: #262730;
-  border-radius: 8px;
-  padding: 4px;
-  gap: 4px;
-`;
 
-const ToggleButton = styled.button<{ active: boolean }>`
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 6px;
-  background-color: ${props => props.active ? '#00d4aa' : 'transparent'};
-  color: ${props => props.active ? '#0e1117' : '#9ca3af'};
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background-color: ${props => props.active ? '#00b894' : '#3d4043'};
-    color: ${props => props.active ? '#0e1117' : '#fafafa'};
-  }
-`;
 
 const BackButton = styled.button`
   background: none;
@@ -157,12 +131,10 @@ export default function ViewerPage() {
   const navigate = useNavigate();
   const { state, dispatch, loadSeries } = useDICOM();
   
-  const [activeView, setActiveView] = useState<'2d' | '3d'>('2d');
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [showMetadata, setShowMetadata] = useState(false);
   
   const viewer2DRef = useRef<Viewer2DRef>(null);
-  const viewer3DRef = useRef<Viewer3DRef>(null);
 
   useEffect(() => {
     if (!state.session) {
@@ -203,17 +175,17 @@ export default function ViewerPage() {
             currentFrameIndex={state.currentFrameIndex}
             windowWidth={state.windowWidth}
             windowLevel={state.windowLevel}
-            zoom={state.zoom}
             isPlaying={state.isPlaying}
             playSpeed={state.playSpeed}
+            gridSize={state.gridSize}
             onFrameChange={(index) => dispatch({ type: 'SET_CURRENT_FRAME', payload: index })}
             onWindowWidthChange={(ww) => dispatch({ type: 'SET_WINDOW_WIDTH', payload: ww })}
             onWindowLevelChange={(wl) => dispatch({ type: 'SET_WINDOW_LEVEL', payload: wl })}
-            onZoomChange={(zoom) => dispatch({ type: 'SET_ZOOM', payload: zoom })}
             onPlayToggle={() => dispatch({ type: 'SET_PLAYING', payload: !state.isPlaying })}
             onPlaySpeedChange={(speed) => dispatch({ type: 'SET_PLAY_SPEED', payload: speed })}
             onResetView={() => dispatch({ type: 'RESET_VIEW' })}
             onToggleMetadata={() => setShowMetadata(!showMetadata)}
+            onGridSizeChange={(size) => dispatch({ type: 'SET_GRID_SIZE', payload: size })}
           />
         )}
       </Sidebar>
@@ -226,61 +198,23 @@ export default function ViewerPage() {
             </BackButton>
             <Title>DICOM Viewer</Title>
           </div>
-          
-          <ViewToggle>
-            <ToggleButton
-              active={activeView === '2d'}
-              onClick={() => setActiveView('2d')}
-            >
-              2D View
-            </ToggleButton>
-            <ToggleButton
-              active={activeView === '3d'}
-              onClick={() => setActiveView('3d')}
-            >
-              3D View
-            </ToggleButton>
-          </ViewToggle>
         </TopBar>
 
         <ViewerContainer>
-          <AnimatePresence mode="wait">
-            {activeView === '2d' && (
-              <Viewer2DContainer
-                key="2d"
-                isActive={activeView === '2d'}
-                initial={{ opacity: 0, x: -50 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 50 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Viewer2D
-                  ref={viewer2DRef}
-                  frames={state.frames}
-                  currentFrameIndex={state.currentFrameIndex}
-                  windowWidth={state.windowWidth}
-                  windowLevel={state.windowLevel}
-                  zoom={state.zoom}
-                />
-              </Viewer2DContainer>
-            )}
-            
-            {activeView === '3d' && (
-              <Viewer3DContainer
-                key="3d"
-                isActive={activeView === '3d'}
-                initial={{ opacity: 0, x: 50 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -50 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Viewer3D
-                  ref={viewer3DRef}
-                  frames={state.frames}
-                />
-              </Viewer3DContainer>
-            )}
-          </AnimatePresence>
+          <Viewer2DContainer
+            isActive={true}
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Viewer2D
+              ref={viewer2DRef}
+              frames={state.frames}
+              currentFrameIndex={state.currentFrameIndex}
+              windowWidth={state.windowWidth}
+              windowLevel={state.windowLevel}
+            />
+          </Viewer2DContainer>
 
           {state.isLoading && (
             <LoadingOverlay
@@ -304,7 +238,7 @@ export default function ViewerPage() {
             <span>Patient: {state.selectedSeries?.patient_name || 'N/A'}</span>
           </StatusInfo>
           <div>
-            WW: {state.windowWidth.toFixed(1)} | WL: {state.windowLevel.toFixed(1)} | Zoom: {state.zoom}%
+            WW: {state.windowWidth.toFixed(1)} | WL: {state.windowLevel.toFixed(1)} | Grid: {state.gridSize}×{state.gridSize}
           </div>
         </StatusBar>
       </MainContent>

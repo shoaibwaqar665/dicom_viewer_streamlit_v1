@@ -36,8 +36,7 @@ export interface DICOMState {
   error: string | null;
   windowWidth: number;
   windowLevel: number;
-  zoom: number;
-  pan: { x: number; y: number };
+  gridSize: number;
   isPlaying: boolean;
   playSpeed: number;
 }
@@ -52,8 +51,7 @@ type DICOMAction =
   | { type: 'SET_CURRENT_FRAME'; payload: number }
   | { type: 'SET_WINDOW_WIDTH'; payload: number }
   | { type: 'SET_WINDOW_LEVEL'; payload: number }
-  | { type: 'SET_ZOOM'; payload: number }
-  | { type: 'SET_PAN'; payload: { x: number; y: number } }
+  | { type: 'SET_GRID_SIZE'; payload: number }
   | { type: 'SET_PLAYING'; payload: boolean }
   | { type: 'SET_PLAY_SPEED'; payload: number }
   | { type: 'NEXT_FRAME' }
@@ -70,8 +68,7 @@ const initialState: DICOMState = {
   error: null,
   windowWidth: 1.0,
   windowLevel: 1.0,
-  zoom: 100,
-  pan: { x: 0, y: 0 },
+  gridSize: 1,
   isPlaying: false,
   playSpeed: 1.0,
 };
@@ -95,10 +92,8 @@ function dicomReducer(state: DICOMState, action: DICOMAction): DICOMState {
       return { ...state, windowWidth: action.payload };
     case 'SET_WINDOW_LEVEL':
       return { ...state, windowLevel: action.payload };
-    case 'SET_ZOOM':
-      return { ...state, zoom: Math.max(10, Math.min(500, action.payload)) };
-    case 'SET_PAN':
-      return { ...state, pan: action.payload };
+    case 'SET_GRID_SIZE':
+      return { ...state, gridSize: Math.max(1, Math.min(4, action.payload)) };
     case 'SET_PLAYING':
       return { ...state, isPlaying: action.payload };
     case 'SET_PLAY_SPEED':
@@ -108,7 +103,7 @@ function dicomReducer(state: DICOMState, action: DICOMAction): DICOMState {
     case 'PREV_FRAME':
       return { ...state, currentFrameIndex: Math.max(state.currentFrameIndex - 1, 0) };
     case 'RESET_VIEW':
-      return { ...state, zoom: 100, pan: { x: 0, y: 0 }, windowWidth: 1.0, windowLevel: 1.0 };
+      return { ...state, windowWidth: 1.0, windowLevel: 1.0 };
     default:
       return state;
   }

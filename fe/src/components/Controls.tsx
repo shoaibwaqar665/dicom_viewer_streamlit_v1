@@ -209,17 +209,17 @@ interface ControlsProps {
   currentFrameIndex: number;
   windowWidth: number;
   windowLevel: number;
-  zoom: number;
   isPlaying: boolean;
   playSpeed: number;
+  gridSize: number;
   onFrameChange: (index: number) => void;
   onWindowWidthChange: (ww: number) => void;
   onWindowLevelChange: (wl: number) => void;
-  onZoomChange: (zoom: number) => void;
   onPlayToggle: () => void;
   onPlaySpeedChange: (speed: number) => void;
   onResetView: () => void;
   onToggleMetadata: () => void;
+  onGridSizeChange: (size: number) => void;
 }
 
 export default function Controls({
@@ -228,17 +228,17 @@ export default function Controls({
   currentFrameIndex,
   windowWidth,
   windowLevel,
-  zoom,
   isPlaying,
   playSpeed,
+  gridSize,
   onFrameChange,
   onWindowWidthChange,
   onWindowLevelChange,
-  onZoomChange,
   onPlayToggle,
   onPlaySpeedChange,
   onResetView,
-  onToggleMetadata
+  onToggleMetadata,
+  onGridSizeChange
 }: ControlsProps) {
   // Auto-play effect
   useEffect(() => {
@@ -341,20 +341,43 @@ export default function Controls({
       </Section>
 
       <Section>
-        <SectionTitle>View Controls</SectionTitle>
+        <SectionTitle>Grid Selection</SectionTitle>
         <ControlGroup>
           <ControlRow>
-            <Label>Zoom:</Label>
-            <Slider
-              type="range"
-              min={10}
-              max={500}
-              value={zoom}
-              onChange={(e) => onZoomChange(parseInt(e.target.value))}
-            />
-            <ValueDisplay>{zoom}%</ValueDisplay>
+            <Label>Grid:</Label>
+            <ButtonGroup>
+              <Button 
+                onClick={() => onGridSizeChange(1)}
+                style={{ backgroundColor: gridSize === 1 ? '#00d4aa' : '#262730' }}
+              >
+                1×1
+              </Button>
+              <Button 
+                onClick={() => onGridSizeChange(2)}
+                style={{ backgroundColor: gridSize === 2 ? '#00d4aa' : '#262730' }}
+              >
+                2×2
+              </Button>
+              <Button 
+                onClick={() => onGridSizeChange(3)}
+                style={{ backgroundColor: gridSize === 3 ? '#00d4aa' : '#262730' }}
+              >
+                3×3
+              </Button>
+              <Button 
+                onClick={() => onGridSizeChange(4)}
+                style={{ backgroundColor: gridSize === 4 ? '#00d4aa' : '#262730' }}
+              >
+                4×4
+              </Button>
+            </ButtonGroup>
           </ControlRow>
-          
+        </ControlGroup>
+      </Section>
+
+      <Section>
+        <SectionTitle>View Controls</SectionTitle>
+        <ControlGroup>
           <ButtonGroup>
             <Button onClick={onResetView}>
               Reset View
