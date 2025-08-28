@@ -151,6 +151,8 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
   const loadAndDisplayImage = useCallback(async (imageDataUrl: string, ww?: number, wl?: number) => {
     if (!canvasRef.current) return;
 
+    console.log(`Viewer2D: loadAndDisplayImage called with WW=${ww}, WL=${wl}`);
+
     const img = new Image();
     img.onload = () => {
       const canvas = canvasRef.current!;
@@ -181,10 +183,13 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
       
       // Apply window/level if provided
       if (ww && wl) {
+        console.log(`Viewer2D: Applying window/level WW=${ww}, WL=${wl} to image`);
         // Get image data from the drawn area
         const imageData = ctx.getImageData(x, y, scaledWidth, scaledHeight);
         const adjustedImageData = applyWindowLevel(imageData, ww, wl);
         ctx.putImageData(adjustedImageData, x, y);
+      } else {
+        console.log(`Viewer2D: No window/level applied (ww=${ww}, wl=${wl})`);
       }
       
       setCurrentImage(img);
@@ -240,6 +245,7 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
   // Update window/level when props change
   useEffect(() => {
     if (currentFrameIndex >= 0 && currentFrameIndex < frames.length && imageIds.length > 0 && windowWidth && windowLevel) {
+      console.log(`Viewer2D: Applying WW=${windowWidth}, WL=${windowLevel} to frame ${currentFrameIndex}`);
       const imageDataUrl = imageIds[currentFrameIndex];
       if (imageDataUrl) {
         loadAndDisplayImage(imageDataUrl, windowWidth, windowLevel);
@@ -254,17 +260,17 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
   useEffect(() => {
     if (currentFrameIndex >= 0 && currentFrameIndex < frames.length && imageIds.length > 0) {
       try {
-        console.log(`Changing to frame ${currentFrameIndex}`);
+        console.log(`Viewer2D: Changing to frame ${currentFrameIndex} with WW=${windowWidth}, WL=${windowLevel}`);
         const imageDataUrl = imageIds[currentFrameIndex];
         if (imageDataUrl) {
-          loadAndDisplayImage(imageDataUrl);
+          loadAndDisplayImage(imageDataUrl, windowWidth, windowLevel);
         }
       } catch (err) {
         console.error('Failed to change frame:', err);
         setError('Failed to load frame');
       }
     }
-  }, [currentFrameIndex, frames.length, imageIds, loadAndDisplayImage]);
+  }, [currentFrameIndex, frames.length, imageIds, loadAndDisplayImage, windowWidth, windowLevel]);
 
   // Handle window resize
   useEffect(() => {
@@ -291,13 +297,21 @@ const Viewer2D = forwardRef<Viewer2DRef, Viewer2DProps>(({
         const x = (canvas.width - scaledWidth) / 2;
         const y = (canvas.height - scaledHeight) / 2;
 
+        // Draw image first
         ctx.drawImage(currentImage, x, y, scaledWidth, scaledHeight);
+        
+        // Apply current window/level
+        if (windowWidth && windowLevel) {
+          const imageData = ctx.getImageData(x, y, scaledWidth, scaledHeight);
+          const adjustedImageData = applyWindowLevel(imageData, windowWidth, windowLevel);
+          ctx.putImageData(adjustedImageData, x, y);
+        }
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [currentImage]);
+  }, [currentImage, windowWidth, windowLevel, applyWindowLevel]);
 
   const currentFrame = frames[currentFrameIndex];
 
