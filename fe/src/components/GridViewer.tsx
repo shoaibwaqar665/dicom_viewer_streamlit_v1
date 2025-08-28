@@ -10,8 +10,18 @@ const GridContainer = styled.div`
   background-color: #000000;
   overflow: hidden;
   display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
   gap: 2px;
   padding: 2px;
+  
+  @media (max-width: 768px) {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+  }
 `;
 
 const GridCell = styled.div<{ gridSize: number }>`
@@ -21,6 +31,15 @@ const GridCell = styled.div<{ gridSize: number }>`
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  width: 100%;
+  height: 100%;
+  
+  @media (max-width: 768px) {
+    min-width: 100vw;
+    min-height: 100%;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
 `;
 
 const Canvas = styled.canvas`
@@ -85,6 +104,64 @@ const ErrorMessage = styled(motion.div)`
   max-width: 400px;
 `;
 
+const ScrollIndicator = styled.div`
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+  
+  @media (min-width: 769px) {
+    display: none;
+  }
+`;
+
+const ScrollDot = styled.div<{ active: boolean }>`
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: ${props => props.active ? '#00d4aa' : '#3d4043'};
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+`;
+
+const NavigationButton = styled.button`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid #3d4043;
+  color: #fafafa;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: rgba(0, 212, 170, 0.2);
+    border-color: #00d4aa;
+  }
+  
+  @media (min-width: 769px) {
+    display: none;
+  }
+`;
+
+const PrevButton = styled(NavigationButton)`
+  left: 10px;
+`;
+
+const NextButton = styled(NavigationButton)`
+  right: 10px;
+`;
+
 interface GridViewerProps {
   frames: DICOMFrame[];
   currentFrameIndex: number;
@@ -124,6 +201,49 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageIds, setImageIds] = useState<string[]>([]);
+  const [currentScrollIndex, setCurrentScrollIndex] = useState(0);
+
+  // Calculate total cells
+  const totalCells = gridSize * gridSize;
+
+  // Scroll navigation functions
+  const scrollToIndex = useCallback((index: number) => {
+    if (!containerRef.current) return;
+    
+    const container = containerRef.current;
+    const cellWidth = container.clientWidth;
+    container.scrollTo({
+      left: index * cellWidth,
+      behavior: 'smooth'
+    });
+    setCurrentScrollIndex(index);
+  }, []);
+
+  const scrollPrev = useCallback(() => {
+    const newIndex = Math.max(0, currentScrollIndex - 1);
+    scrollToIndex(newIndex);
+  }, [currentScrollIndex, scrollToIndex]);
+
+  const scrollNext = useCallback(() => {
+    const newIndex = Math.min(totalCells - 1, currentScrollIndex + 1);
+    scrollToIndex(newIndex);
+  }, [currentScrollIndex, totalCells, scrollToIndex]);
+
+  // Handle scroll events
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const cellWidth = container.clientWidth;
+      const scrollLeft = container.scrollLeft;
+      const newIndex = Math.round(scrollLeft / cellWidth);
+      setCurrentScrollIndex(newIndex);
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Apply window/level to image data
   const applyWindowLevel = useCallback((imageData: ImageData, windowWidth: number, windowLevel: number) => {
@@ -325,14 +445,8 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
     return () => window.removeEventListener('resize', handleResize);
   }, [updateAllImages]);
 
-  const totalCells = gridSize * gridSize;
-  const gridStyle = {
-    gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
-    gridTemplateRows: `repeat(${gridSize}, 1fr)`,
-  };
-
   return (
-    <GridContainer ref={containerRef} style={gridStyle}>
+    <GridContainer ref={containerRef}>
       {Array.from({ length: totalCells }, (_, i) => {
         const cellSeries = selectedSeriesForCells[i];
         const cellFrameData = cellFrames[i] || [];
@@ -388,6 +502,27 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
         <LoadingIndicator>
           <LoadingText>No DICOM frames available</LoadingText>
         </LoadingIndicator>
+      )}
+
+      {/* Navigation Controls - Only show on mobile */}
+      {totalCells > 1 && (
+        <>
+          <PrevButton onClick={scrollPrev} disabled={currentScrollIndex === 0}>
+            ‹
+          </PrevButton>
+          <NextButton onClick={scrollNext} disabled={currentScrollIndex === totalCells - 1}>
+            ›
+          </NextButton>
+          <ScrollIndicator>
+            {Array.from({ length: totalCells }, (_, i) => (
+              <ScrollDot
+                key={i}
+                active={i === currentScrollIndex}
+                onClick={() => scrollToIndex(i)}
+              />
+            ))}
+          </ScrollIndicator>
+        </>
       )}
     </GridContainer>
   );

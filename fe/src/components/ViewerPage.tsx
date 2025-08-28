@@ -184,25 +184,25 @@ export default function ViewerPage() {
         
         {selectedSeries && (
           <>
-            <Controls
-              series={state.selectedSeries}
-              frames={state.frames}
-              currentFrameIndex={state.currentFrameIndex}
-              windowWidth={state.windowWidth}
-              windowLevel={state.windowLevel}
-              gridSize={state.gridSize}
-              onFrameChange={(index) => dispatch({ type: 'SET_CURRENT_FRAME', payload: index })}
-              onWindowWidthChange={(ww) => dispatch({ type: 'SET_WINDOW_WIDTH', payload: ww })}
-              onWindowLevelChange={(wl) => dispatch({ type: 'SET_WINDOW_LEVEL', payload: wl })}
-              onResetView={() => dispatch({ type: 'RESET_VIEW' })}
-              onToggleMetadata={() => setShowMetadata(!showMetadata)}
-              onGridSizeChange={(size) => {
-                console.log('ViewerPage: Grid size changing to:', size);
-                dispatch({ type: 'SET_GRID_SIZE', payload: size });
-              }}
-            />
-            
-            {state.gridSize === 2 && (
+            {state.gridSize === 1 ? (
+              <Controls
+                series={state.selectedSeries}
+                frames={state.frames}
+                currentFrameIndex={state.currentFrameIndex}
+                windowWidth={state.windowWidth}
+                windowLevel={state.windowLevel}
+                gridSize={state.gridSize}
+                onFrameChange={(index) => dispatch({ type: 'SET_CURRENT_FRAME', payload: index })}
+                onWindowWidthChange={(ww) => dispatch({ type: 'SET_WINDOW_WIDTH', payload: ww })}
+                onWindowLevelChange={(wl) => dispatch({ type: 'SET_WINDOW_LEVEL', payload: wl })}
+                onResetView={() => dispatch({ type: 'RESET_VIEW' })}
+                onToggleMetadata={() => setShowMetadata(!showMetadata)}
+                onGridSizeChange={(size) => {
+                  console.log('ViewerPage: Grid size changing to:', size);
+                  dispatch({ type: 'SET_GRID_SIZE', payload: size });
+                }}
+              />
+            ) : (
               <>
                 {console.log('ViewerPage: Rendering GridControls with gridSize:', state.gridSize)}
                 <GridControls
@@ -225,6 +225,7 @@ export default function ViewerPage() {
                     });
                   }}
                   onResetAll={() => dispatch({ type: 'RESET_VIEW' })}
+                  onBackTo1x1={() => dispatch({ type: 'SET_GRID_SIZE', payload: 1 })}
                 />
               </>
             )}

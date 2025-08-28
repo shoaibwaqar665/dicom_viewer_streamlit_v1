@@ -8,9 +8,30 @@ const ControlsContainer = styled(motion.div)`
   border-radius: 12px;
   padding: 1rem;
   margin-bottom: 1rem;
+  max-height: 70vh;
+  overflow-y: auto;
   
   @media (max-width: 768px) {
     padding: 0.75rem;
+    max-height: 50vh;
+  }
+  
+  /* Custom scrollbar */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #3d4043;
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: #00d4aa;
   }
 `;
 
@@ -254,6 +275,7 @@ interface GridControlsProps {
   onSeriesChange: (cellIndex: number, seriesUid: string, frameIndex: number) => void;
   onWindowLevelChange: (cellIndex: number, windowWidth: number, windowLevel: number) => void;
   onResetAll: () => void;
+  onBackTo1x1: () => void;
 }
 
 const GridControls: React.FC<GridControlsProps> = ({
@@ -263,7 +285,8 @@ const GridControls: React.FC<GridControlsProps> = ({
   cellFrames,
   onSeriesChange,
   onWindowLevelChange,
-  onResetAll
+  onResetAll,
+  onBackTo1x1
 }) => {
   console.log('GridControls: Component rendered with:', { selectedSeriesForCells, cellWindowLevels, cellFrames });
   const [tempSeries, setTempSeries] = useState<{ [cellIndex: number]: { seriesUid: string; frameIndex: number } }>(selectedSeriesForCells);
@@ -332,6 +355,22 @@ const GridControls: React.FC<GridControlsProps> = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
+      <Section>
+        <ControlRow>
+          <Button 
+            onClick={onBackTo1x1}
+            style={{ 
+              backgroundColor: '#00d4aa', 
+              color: '#000',
+              fontWeight: '600',
+              width: '100%'
+            }}
+          >
+            ← Back to 1×1 Layout
+          </Button>
+        </ControlRow>
+      </Section>
+      
       {[0, 1, 2, 3].map(cellIndex => {
         const currentSeries = selectedSeriesForCells[cellIndex];
         const availableFrames = cellFrames[cellIndex] || [];
