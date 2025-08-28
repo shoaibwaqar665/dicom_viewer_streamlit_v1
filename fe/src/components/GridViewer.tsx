@@ -24,7 +24,7 @@ const GridContainer = styled.div`
   }
 `;
 
-const GridCell = styled.div<{ gridSize: number }>`
+const GridCell = styled.div<{ gridSize: number; borderColor: string }>`
   position: relative;
   background-color: #000000;
   display: flex;
@@ -33,6 +33,8 @@ const GridCell = styled.div<{ gridSize: number }>`
   overflow: hidden;
   width: 100%;
   height: 100%;
+  border: 2px solid ${props => props.borderColor};
+  border-radius: 5px;
   
   @media (max-width: 768px) {
     min-width: 100vw;
@@ -50,6 +52,7 @@ const Canvas = styled.canvas`
   object-fit: contain;
   background-color: #000000;
   display: block;
+  border-radius: 3px;
 `;
 
 const FrameInfo = styled(motion.div)`
@@ -205,6 +208,28 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
 
   // Calculate total cells
   const totalCells = gridSize * gridSize;
+
+  // Generate specific colors for each cell
+  const getRandomColor = (index: number) => {
+    // Specific colors for images 1 and 3
+    if (index === 0) return '#5f27cd'; // Purple for Image 1
+    if (index === 2) return '#feca57'; // Yellow for Image 3
+    
+    // Other colors for remaining cells
+    const colors = [
+      '#00d4aa', // Teal
+      '#ff6b6b', // Red
+      '#4ecdc4', // Turquoise
+      '#45b7d1', // Blue
+      '#96ceb4', // Green
+      '#ff9ff3', // Pink
+      '#54a0ff', // Light Blue
+      '#00d2d3', // Cyan
+      '#ff9f43', // Orange
+      '#10ac84', // Dark Green
+    ];
+    return colors[index % colors.length];
+  };
 
   // Scroll navigation functions
   const scrollToIndex = useCallback((index: number) => {
@@ -447,14 +472,15 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
 
   return (
     <GridContainer ref={containerRef}>
-      {Array.from({ length: totalCells }, (_, i) => {
+            {Array.from({ length: totalCells }, (_, i) => {
         const cellSeries = selectedSeriesForCells[i];
         const cellFrameData = cellFrames[i] || [];
         const frameIndex = cellSeries?.frameIndex || 0;
         const frame = frameIndex < cellFrameData.length ? cellFrameData[frameIndex] : null;
-        
+        const borderColor = getRandomColor(i);
+
         return (
-          <GridCell key={i} gridSize={gridSize}>
+          <GridCell key={i} gridSize={gridSize} borderColor={borderColor}>
             {frame && cellSeries?.seriesUid && (
               <>
                 <Canvas

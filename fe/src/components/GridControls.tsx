@@ -7,13 +7,13 @@ const ControlsContainer = styled(motion.div)`
   border: 1px solid #3d4043;
   border-radius: 12px;
   padding: 1rem;
-  margin-bottom: 1rem;
-  max-height: 70vh;
+  height: calc(100vh - 120px);
   overflow-y: auto;
+  flex: 1;
   
   @media (max-width: 768px) {
     padding: 0.75rem;
-    max-height: 50vh;
+    height: calc(100vh - 100px);
   }
   
   /* Custom scrollbar */
@@ -50,6 +50,7 @@ const Slider = styled.input`
   background: #3d4043;
   outline: none;
   -webkit-appearance: none;
+  transition: all 0.1s ease;
   
   &::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -59,6 +60,7 @@ const Slider = styled.input`
     border-radius: 50%;
     background: #00d4aa;
     cursor: pointer;
+    transition: all 0.1s ease;
   }
   
   &::-moz-range-thumb {
@@ -68,6 +70,16 @@ const Slider = styled.input`
     background: #00d4aa;
     cursor: pointer;
     border: none;
+    transition: all 0.1s ease;
+  }
+  
+  &:active {
+    &::-webkit-slider-thumb {
+      transform: scale(1.1);
+    }
+    &::-moz-range-thumb {
+      transform: scale(1.1);
+    }
   }
 `;
 
@@ -414,6 +426,7 @@ const GridControls: React.FC<GridControlsProps> = ({
                     type="range"
                     min="0"
                     max={availableFrames.length - 1}
+                    step="1"
                     value={currentSeries.frameIndex || 0}
                     onChange={(e) => handleFrameChange(cellIndex, e.target.value)}
                   />

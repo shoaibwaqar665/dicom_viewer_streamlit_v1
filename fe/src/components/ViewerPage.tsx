@@ -29,12 +29,14 @@ const Sidebar = styled(motion.div)`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  height: 100vh;
   
   @media (max-width: 768px) {
     width: 100%;
     max-height: 40vh;
     border-right: none;
     border-bottom: 1px solid #3d4043;
+    height: auto;
   }
 `;
 
@@ -176,11 +178,13 @@ export default function ViewerPage() {
         animate={{ x: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <SeriesList
-          series={state.session.series}
-          selectedSeries={selectedSeries}
-          onSeriesSelect={handleSeriesSelect}
-        />
+        {state.gridSize === 1 && (
+          <SeriesList
+            series={state.session.series}
+            selectedSeries={selectedSeries}
+            onSeriesSelect={handleSeriesSelect}
+          />
+        )}
         
         {selectedSeries && (
           <>
