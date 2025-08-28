@@ -165,6 +165,24 @@ const NextButton = styled(NavigationButton)`
   right: 10px;
 `;
 
+const PatientInfo = styled(motion.div)`
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #fafafa;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  z-index: 10;
+`;
+
 interface GridViewerProps {
   frames: DICOMFrame[];
   currentFrameIndex: number;
@@ -174,6 +192,7 @@ interface GridViewerProps {
   selectedSeriesForCells: { [cellIndex: number]: { seriesUid: string; frameIndex: number } };
   cellWindowLevels: { [cellIndex: number]: { windowWidth: number; windowLevel: number } };
   cellFrames: { [cellIndex: number]: DICOMFrame[] };
+  session: any;
 }
 
 export interface GridViewerRef {
@@ -189,7 +208,8 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
   gridSize,
   selectedSeriesForCells,
   cellWindowLevels,
-  cellFrames
+  cellFrames,
+  session
 }, ref) => {
   console.log('GridViewer: Component rendered with props:', { 
     frames: frames.length, 
@@ -478,6 +498,10 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
         const frameIndex = cellSeries?.frameIndex || 0;
         const frame = frameIndex < cellFrameData.length ? cellFrameData[frameIndex] : null;
         const borderColor = getRandomColor(i);
+        
+        // Get patient name from the series data
+        const seriesData = session?.series?.find((s: any) => s.uid === cellSeries?.seriesUid);
+        const patientName = seriesData?.patient_name || 'Unknown Patient';
 
         return (
           <GridCell key={i} gridSize={gridSize} borderColor={borderColor}>
@@ -494,6 +518,13 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
                   File {i + 1}<br/>
                   Frame {frameIndex + 1}
                 </FrameInfo>
+                <PatientInfo
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                >
+                  {patientName}
+                </PatientInfo>
               </>
             )}
           </GridCell>

@@ -280,6 +280,7 @@ export default function ViewerPage() {
                 selectedSeriesForCells={state.selectedSeriesForCells}
                 cellWindowLevels={state.cellWindowLevels}
                 cellFrames={state.cellFrames}
+                session={state.session}
               />
             </Viewer2DContainer>
           )}
