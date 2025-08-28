@@ -91,6 +91,9 @@ interface GridViewerProps {
   windowWidth: number;
   windowLevel: number;
   gridSize: number;
+  selectedSeriesForCells: { [cellIndex: number]: { seriesUid: string; frameIndex: number } };
+  cellWindowLevels: { [cellIndex: number]: { windowWidth: number; windowLevel: number } };
+  cellFrames: { [cellIndex: number]: DICOMFrame[] };
 }
 
 export interface GridViewerRef {
@@ -103,8 +106,18 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
   currentFrameIndex,
   windowWidth,
   windowLevel,
-  gridSize
+  gridSize,
+  selectedSeriesForCells,
+  cellWindowLevels,
+  cellFrames
 }, ref) => {
+  console.log('GridViewer: Component rendered with props:', { 
+    frames: frames.length, 
+    gridSize, 
+    selectedSeriesForCells, 
+    cellWindowLevels,
+    cellFrames
+  });
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   
@@ -198,7 +211,7 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
     },
     setWindowLevel: (ww: number, wl: number) => {
       // Update window/level for all visible images
-      updateAllImages(ww, wl);
+      updateAllImages();
     }
   }));
 
@@ -214,19 +227,25 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
     setImageIds(newImageIds);
   }, [frames]);
 
-  // Update all visible images
-  const updateAllImages = useCallback(async (ww: number, wl: number) => {
+  // Update all visible images with individual window/level
+  const updateAllImages = useCallback(async () => {
     const totalCells = gridSize * gridSize;
     const updatePromises = [];
     
     for (let i = 0; i < totalCells; i++) {
-      const frameIndex = currentFrameIndex + i;
-      if (frameIndex < frames.length && canvasRefs.current[i]) {
-        const imageDataUrl = imageIds[frameIndex];
-        if (imageDataUrl) {
+      const cellSeries = selectedSeriesForCells[i];
+      const cellFrameData = cellFrames[i] || [];
+      
+      if (cellSeries && cellSeries.seriesUid && cellFrameData.length > 0 && canvasRefs.current[i]) {
+        const frameIndex = cellSeries.frameIndex || 0;
+        if (frameIndex < cellFrameData.length) {
+          const frame = cellFrameData[frameIndex];
+          const imageDataUrl = `data:image/png;base64,${frame.data}`;
+          const cellWL = cellWindowLevels[i] || { windowWidth: 400, windowLevel: 50 };
+          
           updatePromises.push(
-            loadAndDisplayImage(imageDataUrl, canvasRefs.current[i]!, ww, wl)
-              .catch(err => console.error(`Failed to update frame ${frameIndex}:`, err))
+            loadAndDisplayImage(imageDataUrl, canvasRefs.current[i]!, cellWL.windowWidth, cellWL.windowLevel)
+              .catch(err => console.error(`Failed to update cell ${i}:`, err))
           );
         }
       }
@@ -237,12 +256,10 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
     } catch (err) {
       console.error('GridViewer: Error updating images:', err);
     }
-  }, [currentFrameIndex, frames.length, imageIds, gridSize, loadAndDisplayImage]);
+  }, [selectedSeriesForCells, cellFrames, gridSize, cellWindowLevels, loadAndDisplayImage]);
 
   // Load images for grid
   useEffect(() => {
-    if (imageIds.length === 0 || frames.length === 0) return;
-
     setIsLoading(true);
     setError(null);
 
@@ -254,24 +271,28 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
       
       const loadPromises = [];
       
-      console.log(`GridViewer: Loading ${totalCells} cells starting from frame ${currentFrameIndex}`);
-      console.log(`GridViewer: Available frames: ${frames.length}`);
+      console.log(`GridViewer: Loading ${totalCells} cells with selected series:`, selectedSeriesForCells);
       
       for (let i = 0; i < totalCells; i++) {
-        const frameIndex = currentFrameIndex + i;
+        const cellSeries = selectedSeriesForCells[i];
+        const cellFrameData = cellFrames[i] || [];
         const canvas = canvasRefs.current[i];
         
-        if (frameIndex < frames.length && canvas) {
-          const imageDataUrl = imageIds[frameIndex];
-          if (imageDataUrl) {
-            console.log(`GridViewer: Loading frame ${frameIndex} into cell ${i}`);
+        if (cellSeries && cellSeries.seriesUid && cellFrameData.length > 0 && canvas) {
+          const frameIndex = cellSeries.frameIndex || 0;
+          if (frameIndex < cellFrameData.length) {
+            const frame = cellFrameData[frameIndex];
+            const imageDataUrl = `data:image/png;base64,${frame.data}`;
+            const cellWL = cellWindowLevels[i] || { windowWidth: 400, windowLevel: 50 };
+            
+            console.log(`GridViewer: Loading cell ${i} - series: ${cellSeries.seriesUid}, frame: ${frameIndex}, WW=${cellWL.windowWidth}, WL=${cellWL.windowLevel}`);
             loadPromises.push(
-              loadAndDisplayImage(imageDataUrl, canvas, windowWidth, windowLevel)
-                .catch(err => console.error(`Failed to load frame ${frameIndex}:`, err))
+              loadAndDisplayImage(imageDataUrl, canvas, cellWL.windowWidth, cellWL.windowLevel)
+                .catch(err => console.error(`Failed to load cell ${i}:`, err))
             );
           }
         } else {
-          console.log(`GridViewer: Skipping cell ${i} - frameIndex: ${frameIndex}, canvas: ${!!canvas}`);
+          console.log(`GridViewer: Skipping cell ${i} - series: ${cellSeries?.seriesUid}, frames: ${cellFrameData.length}, canvas: ${!!canvas}`);
         }
       }
       
@@ -287,24 +308,22 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
     };
 
     loadGridImages();
-  }, [currentFrameIndex, frames.length, imageIds, gridSize, windowWidth, windowLevel, loadAndDisplayImage]);
+  }, [selectedSeriesForCells, cellFrames, gridSize, cellWindowLevels, loadAndDisplayImage]);
 
-  // Handle window/level changes
+  // Handle window/level changes for individual cells
   useEffect(() => {
-    if (windowWidth && windowLevel) {
-      updateAllImages(windowWidth, windowLevel);
-    }
-  }, [windowWidth, windowLevel, updateAllImages]);
+    updateAllImages();
+  }, [updateAllImages]);
 
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
-      updateAllImages(windowWidth, windowLevel);
+      updateAllImages();
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [updateAllImages, windowWidth, windowLevel]);
+  }, [updateAllImages]);
 
   const totalCells = gridSize * gridSize;
   const gridStyle = {
@@ -315,12 +334,14 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
   return (
     <GridContainer ref={containerRef} style={gridStyle}>
       {Array.from({ length: totalCells }, (_, i) => {
-        const frameIndex = currentFrameIndex + i;
-        const frame = frames[frameIndex];
+        const cellSeries = selectedSeriesForCells[i];
+        const cellFrameData = cellFrames[i] || [];
+        const frameIndex = cellSeries?.frameIndex || 0;
+        const frame = frameIndex < cellFrameData.length ? cellFrameData[frameIndex] : null;
         
         return (
           <GridCell key={i} gridSize={gridSize}>
-            {frame && (
+            {frame && cellSeries?.seriesUid && (
               <>
                 <Canvas
                   ref={(el) => (canvasRefs.current[i] = el)}
@@ -330,7 +351,8 @@ const GridViewer = forwardRef<GridViewerRef, GridViewerProps>(({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  {frameIndex + 1}
+                  File {i + 1}<br/>
+                  Frame {frameIndex + 1}
                 </FrameInfo>
               </>
             )}

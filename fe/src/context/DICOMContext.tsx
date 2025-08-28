@@ -37,6 +37,9 @@ export interface DICOMState {
   windowWidth: number;
   windowLevel: number;
   gridSize: number;
+  selectedSeriesForCells: { [cellIndex: number]: { seriesUid: string; frameIndex: number } }; // For 2x2 grid: different series for each cell
+  cellWindowLevels: { [cellIndex: number]: { windowWidth: number; windowLevel: number } }; // Individual WW/WL for each cell
+  cellFrames: { [cellIndex: number]: DICOMFrame[] }; // Frames for each cell (different series)
 }
 
 // Actions
@@ -50,6 +53,9 @@ type DICOMAction =
   | { type: 'SET_WINDOW_WIDTH'; payload: number }
   | { type: 'SET_WINDOW_LEVEL'; payload: number }
   | { type: 'SET_GRID_SIZE'; payload: number }
+  | { type: 'SET_CELL_SERIES'; payload: { cellIndex: number; seriesUid: string; frameIndex: number } }
+  | { type: 'SET_CELL_WINDOW_LEVEL'; payload: { cellIndex: number; windowWidth: number; windowLevel: number } }
+  | { type: 'SET_CELL_FRAMES'; payload: { cellIndex: number; frames: DICOMFrame[] } }
   | { type: 'NEXT_FRAME' }
   | { type: 'PREV_FRAME' }
   | { type: 'RESET_VIEW' };
@@ -65,6 +71,24 @@ const initialState: DICOMState = {
   windowWidth: 400,
   windowLevel: 50,
   gridSize: 1,
+  selectedSeriesForCells: {
+    0: { seriesUid: '', frameIndex: 0 },
+    1: { seriesUid: '', frameIndex: 0 },
+    2: { seriesUid: '', frameIndex: 0 },
+    3: { seriesUid: '', frameIndex: 0 }
+  },
+  cellWindowLevels: {
+    0: { windowWidth: 400, windowLevel: 50 },
+    1: { windowWidth: 400, windowLevel: 50 },
+    2: { windowWidth: 400, windowLevel: 50 },
+    3: { windowWidth: 400, windowLevel: 50 }
+  },
+  cellFrames: {
+    0: [],
+    1: [],
+    2: [],
+    3: []
+  },
 };
 
 // Reducer
@@ -79,7 +103,11 @@ function dicomReducer(state: DICOMState, action: DICOMAction): DICOMState {
     case 'SET_SELECTED_SERIES':
       return { ...state, selectedSeries: action.payload };
     case 'SET_FRAMES':
-      return { ...state, frames: action.payload, currentFrameIndex: 0 };
+      return { 
+        ...state, 
+        frames: action.payload, 
+        currentFrameIndex: 0
+      };
     case 'SET_CURRENT_FRAME':
       return { ...state, currentFrameIndex: Math.max(0, Math.min(action.payload, state.frames.length - 1)) };
     case 'SET_WINDOW_WIDTH':
@@ -88,12 +116,52 @@ function dicomReducer(state: DICOMState, action: DICOMAction): DICOMState {
       return { ...state, windowLevel: action.payload };
     case 'SET_GRID_SIZE':
       return { ...state, gridSize: Math.max(1, Math.min(2, action.payload)) };
+    case 'SET_CELL_SERIES':
+      return {
+        ...state,
+        selectedSeriesForCells: {
+          ...state.selectedSeriesForCells,
+          [action.payload.cellIndex]: {
+            seriesUid: action.payload.seriesUid,
+            frameIndex: action.payload.frameIndex
+          }
+        }
+      };
+    case 'SET_CELL_WINDOW_LEVEL':
+      return {
+        ...state,
+        cellWindowLevels: {
+          ...state.cellWindowLevels,
+          [action.payload.cellIndex]: {
+            windowWidth: action.payload.windowWidth,
+            windowLevel: action.payload.windowLevel
+          }
+        }
+      };
+    case 'SET_CELL_FRAMES':
+      return {
+        ...state,
+        cellFrames: {
+          ...state.cellFrames,
+          [action.payload.cellIndex]: action.payload.frames
+        }
+      };
     case 'NEXT_FRAME':
       return { ...state, currentFrameIndex: Math.min(state.currentFrameIndex + 1, state.frames.length - 1) };
     case 'PREV_FRAME':
       return { ...state, currentFrameIndex: Math.max(state.currentFrameIndex - 1, 0) };
     case 'RESET_VIEW':
-      return { ...state, windowWidth: 400, windowLevel: 50 };
+      return { 
+        ...state, 
+        windowWidth: 400, 
+        windowLevel: 50,
+        cellWindowLevels: {
+          0: { windowWidth: 400, windowLevel: 50 },
+          1: { windowWidth: 400, windowLevel: 50 },
+          2: { windowWidth: 400, windowLevel: 50 },
+          3: { windowWidth: 400, windowLevel: 50 }
+        }
+      };
     default:
       return state;
   }
@@ -106,6 +174,7 @@ const DICOMContext = createContext<{
   uploadFiles: (files: File[]) => Promise<void>;
   loadSeries: (seriesUid: string) => Promise<void>;
   loadFrame: (frameIndex: number) => Promise<void>;
+  loadSeriesForCell: (cellIndex: number, seriesUid: string, frameIndex: number) => Promise<void>;
 } | null>(null);
 
 // Provider
@@ -173,8 +242,30 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loadSeriesForCell = async (cellIndex: number, seriesUid: string, frameIndex: number) => {
+    if (!state.session) return;
+
+    try {
+      const response = await axios.get(`/api/series/${state.session.session_id}/${seriesUid}`);
+      
+      // Set the series and frame for this cell
+      dispatch({ 
+        type: 'SET_CELL_SERIES', 
+        payload: { cellIndex, seriesUid, frameIndex } 
+      });
+      
+      // Load the frames for this cell
+      dispatch({ 
+        type: 'SET_CELL_FRAMES', 
+        payload: { cellIndex, frames: response.data.frames } 
+      });
+    } catch (error) {
+      console.error('Failed to load series for cell:', error);
+    }
+  };
+
   return (
-    <DICOMContext.Provider value={{ state, dispatch, uploadFiles, loadSeries, loadFrame }}>
+    <DICOMContext.Provider value={{ state, dispatch, uploadFiles, loadSeries, loadFrame, loadSeriesForCell }}>
       {children}
     </DICOMContext.Provider>
   );

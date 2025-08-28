@@ -6,6 +6,7 @@ import { useDICOM } from '../context/DICOMContext';
 import SeriesList from './SeriesList';
 import Viewer2D, { Viewer2DRef } from './Viewer2D';
 import GridViewer, { GridViewerRef } from './GridViewer';
+import GridControls from './GridControls';
 
 import Controls from './Controls';
 import MetadataPanel from './MetadataPanel';
@@ -15,6 +16,10 @@ const Container = styled.div`
   display: flex;
   background-color: #0e1117;
   color: #fafafa;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
 `;
 
 const Sidebar = styled(motion.div)`
@@ -24,6 +29,13 @@ const Sidebar = styled(motion.div)`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  
+  @media (max-width: 768px) {
+    width: 100%;
+    max-height: 40vh;
+    border-right: none;
+    border-bottom: 1px solid #3d4043;
+  }
 `;
 
 const MainContent = styled.div`
@@ -130,7 +142,7 @@ const LoadingText = styled.div`
 
 export default function ViewerPage() {
   const navigate = useNavigate();
-  const { state, dispatch, loadSeries } = useDICOM();
+  const { state, dispatch, loadSeries, loadSeriesForCell } = useDICOM();
   
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [showMetadata, setShowMetadata] = useState(false);
@@ -171,20 +183,52 @@ export default function ViewerPage() {
         />
         
         {selectedSeries && (
-          <Controls
-            series={state.selectedSeries}
-            frames={state.frames}
-            currentFrameIndex={state.currentFrameIndex}
-            windowWidth={state.windowWidth}
-            windowLevel={state.windowLevel}
-            gridSize={state.gridSize}
-            onFrameChange={(index) => dispatch({ type: 'SET_CURRENT_FRAME', payload: index })}
-            onWindowWidthChange={(ww) => dispatch({ type: 'SET_WINDOW_WIDTH', payload: ww })}
-            onWindowLevelChange={(wl) => dispatch({ type: 'SET_WINDOW_LEVEL', payload: wl })}
-            onResetView={() => dispatch({ type: 'RESET_VIEW' })}
-            onToggleMetadata={() => setShowMetadata(!showMetadata)}
-            onGridSizeChange={(size) => dispatch({ type: 'SET_GRID_SIZE', payload: size })}
-          />
+          <>
+            <Controls
+              series={state.selectedSeries}
+              frames={state.frames}
+              currentFrameIndex={state.currentFrameIndex}
+              windowWidth={state.windowWidth}
+              windowLevel={state.windowLevel}
+              gridSize={state.gridSize}
+              onFrameChange={(index) => dispatch({ type: 'SET_CURRENT_FRAME', payload: index })}
+              onWindowWidthChange={(ww) => dispatch({ type: 'SET_WINDOW_WIDTH', payload: ww })}
+              onWindowLevelChange={(wl) => dispatch({ type: 'SET_WINDOW_LEVEL', payload: wl })}
+              onResetView={() => dispatch({ type: 'RESET_VIEW' })}
+              onToggleMetadata={() => setShowMetadata(!showMetadata)}
+              onGridSizeChange={(size) => {
+                console.log('ViewerPage: Grid size changing to:', size);
+                dispatch({ type: 'SET_GRID_SIZE', payload: size });
+              }}
+            />
+            
+            {state.gridSize === 2 && (
+              <>
+                {console.log('ViewerPage: Rendering GridControls with gridSize:', state.gridSize)}
+                <GridControls
+                  session={state.session}
+                  selectedSeriesForCells={state.selectedSeriesForCells}
+                  cellWindowLevels={state.cellWindowLevels}
+                  cellFrames={state.cellFrames}
+                  onSeriesChange={(cellIndex, seriesUid, frameIndex) => {
+                    dispatch({ 
+                      type: 'SET_CELL_SERIES', 
+                      payload: { cellIndex, seriesUid, frameIndex } 
+                    });
+                    // Load the series for this cell
+                    loadSeriesForCell(cellIndex, seriesUid, frameIndex);
+                  }}
+                  onWindowLevelChange={(cellIndex, windowWidth, windowLevel) => {
+                    dispatch({ 
+                      type: 'SET_CELL_WINDOW_LEVEL', 
+                      payload: { cellIndex, windowWidth, windowLevel } 
+                    });
+                  }}
+                  onResetAll={() => dispatch({ type: 'RESET_VIEW' })}
+                />
+              </>
+            )}
+          </>
         )}
       </Sidebar>
 
@@ -228,6 +272,9 @@ export default function ViewerPage() {
                 windowWidth={state.windowWidth}
                 windowLevel={state.windowLevel}
                 gridSize={state.gridSize}
+                selectedSeriesForCells={state.selectedSeriesForCells}
+                cellWindowLevels={state.cellWindowLevels}
+                cellFrames={state.cellFrames}
               />
             </Viewer2DContainer>
           )}
