@@ -4,6 +4,11 @@ import axios from 'axios';
 // API Configuration
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
+// Configure axios defaults for better timeout handling
+axios.defaults.timeout = 60000; // 1 minute default timeout
+axios.defaults.maxContentLength = Infinity;
+axios.defaults.maxBodyLength = Infinity;
+
 // Types
 export interface DICOMSeries {
   uid: string;
@@ -194,16 +199,44 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
         formData.append('files', file);
       });
 
+      // Configure axios with longer timeout for file uploads
       const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+        },
+        timeout: 300000, // 5 minutes timeout
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            console.log(`Upload progress: ${percentCompleted}%`);
+            // You can dispatch progress updates here if you want to show progress bar
+          }
         },
       });
 
       dispatch({ type: 'SET_SESSION', payload: response.data });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to upload files';
+      let errorMessage = 'Failed to upload files';
+      
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          errorMessage = 'Upload timed out. Please try again with smaller files or check your connection.';
+        } else if (error.response?.status === 524) {
+          errorMessage = 'Upload timed out on server. Please try again or contact support.';
+        } else if (error.response?.status) {
+          errorMessage = `Upload failed with status ${error.response.status}: ${error.response.data?.message || error.message}`;
+        } else if (error.request) {
+          errorMessage = 'No response from server. Please check your connection and try again.';
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
