@@ -42,6 +42,7 @@ export interface DICOMState {
   currentFrameIndex: number;
   isLoading: boolean;
   error: string | null;
+  uploadProgress: number; // Upload progress percentage
   windowWidth: number;
   windowLevel: number;
   gridSize: number;
@@ -64,6 +65,7 @@ type DICOMAction =
   | { type: 'SET_CELL_SERIES'; payload: { cellIndex: number; seriesUid: string; frameIndex: number } }
   | { type: 'SET_CELL_WINDOW_LEVEL'; payload: { cellIndex: number; windowWidth: number; windowLevel: number } }
   | { type: 'SET_CELL_FRAMES'; payload: { cellIndex: number; frames: DICOMFrame[] } }
+  | { type: 'SET_UPLOAD_PROGRESS'; payload: number }
   | { type: 'NEXT_FRAME' }
   | { type: 'PREV_FRAME' }
   | { type: 'RESET_VIEW' };
@@ -76,6 +78,7 @@ const initialState: DICOMState = {
   currentFrameIndex: 0,
   isLoading: false,
   error: null,
+  uploadProgress: 0,
   windowWidth: 400,
   windowLevel: 50,
   gridSize: 1,
@@ -101,11 +104,15 @@ const initialState: DICOMState = {
 
 // Reducer
 function dicomReducer(state: DICOMState, action: DICOMAction): DICOMState {
+  console.log('Reducer action:', action.type, 'payload:', 'payload' in action ? action.payload : 'none');
+  
   switch (action.type) {
     case 'SET_LOADING':
+      console.log('SET_LOADING - new isLoading:', action.payload);
       return { ...state, isLoading: action.payload };
     case 'SET_ERROR':
-      return { ...state, error: action.payload, isLoading: false };
+      console.log('SET_ERROR - new error:', action.payload);
+      return { ...state, error: action.payload };
     case 'SET_SESSION':
       return { ...state, session: action.payload, error: null };
     case 'SET_SELECTED_SERIES':
@@ -154,6 +161,9 @@ function dicomReducer(state: DICOMState, action: DICOMAction): DICOMState {
           [action.payload.cellIndex]: action.payload.frames
         }
       };
+    case 'SET_UPLOAD_PROGRESS':
+      console.log('SET_UPLOAD_PROGRESS - new progress:', action.payload);
+      return { ...state, uploadProgress: action.payload };
     case 'NEXT_FRAME':
       return { ...state, currentFrameIndex: Math.min(state.currentFrameIndex + 1, state.frames.length - 1) };
     case 'PREV_FRAME':
@@ -190,8 +200,10 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(dicomReducer, initialState);
 
   const uploadFiles = async (files: File[]) => {
+    console.log('Upload starting - setting loading to true');
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+    dispatch({ type: 'SET_UPLOAD_PROGRESS', payload: 0 });
 
     try {
       const formData = new FormData();
@@ -208,15 +220,32 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
         onUploadProgress: (progressEvent) => {
+          console.log('Progress event:', progressEvent);
           if (progressEvent.total) {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             console.log(`Upload progress: ${percentCompleted}%`);
-            // You can dispatch progress updates here if you want to show progress bar
+            dispatch({ type: 'SET_UPLOAD_PROGRESS', payload: percentCompleted });
+          } else {
+            console.log('No total size available, loaded:', progressEvent.loaded);
+            // If no total size, estimate progress based on loaded bytes
+            if (progressEvent.loaded > 0) {
+              const estimatedProgress = Math.min(Math.round((progressEvent.loaded / 1000000) * 10), 90); // Estimate based on 1MB chunks
+              dispatch({ type: 'SET_UPLOAD_PROGRESS', payload: estimatedProgress });
+            }
           }
         },
       });
 
       dispatch({ type: 'SET_SESSION', payload: response.data });
+      dispatch({ type: 'SET_UPLOAD_PROGRESS', payload: 100 });
+      
+      // Keep progress bar visible for a moment to show completion
+      console.log('Upload successful - setting loading to false in 500ms');
+      setTimeout(() => {
+        console.log('Setting loading to false after timeout');
+        dispatch({ type: 'SET_LOADING', payload: false });
+      }, 500);
+      
     } catch (error) {
       let errorMessage = 'Failed to upload files';
       
@@ -235,7 +264,7 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
       }
       
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-    } finally {
+      console.log('Upload failed - setting loading to false');
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   };

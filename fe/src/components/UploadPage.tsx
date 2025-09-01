@@ -189,10 +189,67 @@ const ErrorMessage = styled(motion.div)`
   text-align: center;
 `;
 
+const ProgressContainer = styled(motion.div)`
+  width: 100%;
+  max-width: 600px;
+  margin: 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const ProgressBar = styled.div`
+  width: 100%;
+  height: 12px;
+  background-color: rgba(26, 27, 35, 0.8);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #3d4043;
+`;
+
+const ProgressFill = styled.div<{ progress: number }>`
+  height: 100%;
+  background: linear-gradient(90deg, #00d4aa, #00b894);
+  border-radius: 6px;
+  transition: width 0.3s ease;
+  width: ${props => props.progress}%;
+  position: relative;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: shimmer 2s infinite;
+  }
+  
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+`;
+
+const ProgressText = styled.div`
+  font-size: 0.875rem;
+  color: #9ca3af;
+  font-weight: 500;
+`;
+
 export default function UploadPage() {
   const navigate = useNavigate();
   const { state, uploadFiles } = useDICOM();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  
+  // Debug logging
+  console.log('UploadPage state:', {
+    isLoading: state.isLoading,
+    uploadProgress: state.uploadProgress,
+    error: state.error
+  });
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     if (rejectedFiles.length > 0) {
@@ -307,6 +364,25 @@ export default function UploadPage() {
             </FileItem>
           ))}
         </FileList>
+      )}
+
+      {/* Progress Bar - Show when uploading */}
+      {state.isLoading && (
+        <ProgressContainer
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <ProgressText>
+            {state.uploadProgress > 0 
+              ? `Uploading files... ${state.uploadProgress}%`
+              : 'Preparing upload...'
+            }
+          </ProgressText>
+          <ProgressBar>
+            <ProgressFill progress={state.uploadProgress} />
+          </ProgressBar>
+        </ProgressContainer>
       )}
 
       {selectedFiles.length > 0 && (
