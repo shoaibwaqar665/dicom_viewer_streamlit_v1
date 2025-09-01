@@ -397,10 +397,7 @@ export default function UploadPage() {
         >
           {state.isLoading ? (
             <>
-              <LoadingSpinner
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              />
+              
               Processing DICOM files...
             </>
           ) : (
