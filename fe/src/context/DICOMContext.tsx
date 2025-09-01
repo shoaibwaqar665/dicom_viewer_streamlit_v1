@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import axios from 'axios';
 
+// API Configuration
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
 // Types
 export interface DICOMSeries {
   uid: string;
@@ -191,7 +194,7 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
         formData.append('files', file);
       });
 
-      const response = await axios.post('/api/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -211,7 +214,7 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const response = await axios.get(`/api/series/${state.session.session_id}/${seriesUid}`);
+      const response = await axios.get(`${API_BASE_URL}/api/series/${state.session.session_id}/${seriesUid}`);
       
       const series = state.session.series.find(s => s.uid === seriesUid);
       if (series) {
@@ -230,7 +233,7 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
 
     try {
       const response = await axios.get(
-        `/api/series/${state.session.session_id}/${state.selectedSeries.uid}/frame/${frameIndex}`
+        `${API_BASE_URL}/api/series/${state.session.session_id}/${state.selectedSeries.uid}/frame/${frameIndex}`
       );
       
       // Update the specific frame in the frames array
@@ -246,7 +249,7 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
     if (!state.session) return;
 
     try {
-      const response = await axios.get(`/api/series/${state.session.session_id}/${seriesUid}`);
+      const response = await axios.get(`${API_BASE_URL}/api/series/${state.session.session_id}/${seriesUid}`);
       
       // Set the series and frame for this cell
       dispatch({ 
