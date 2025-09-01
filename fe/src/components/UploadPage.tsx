@@ -355,7 +355,7 @@ export default function UploadPage() {
               transition={{ duration: 0.3, delay: index * 0.1 }}
             >
               <FileInfo>
-                <FileIcon>📦</FileIcon>
+
                 <FileDetails>
                   <FileName>{file.name}</FileName>
                   <FileSize>{formatFileSize(file.size)}</FileSize>

@@ -270,8 +270,10 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
   };
 
   const loadSeries = async (seriesUid: string) => {
+    console.log('loadSeries called with seriesUid:', seriesUid);
     if (!state.session) return;
 
+    console.log('Setting loading to true in loadSeries');
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
@@ -287,6 +289,9 @@ export function DICOMContextProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load series';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    } finally {
+      console.log('Setting loading to false in loadSeries finally block');
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
