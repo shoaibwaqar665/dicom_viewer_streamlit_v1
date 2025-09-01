@@ -1,6 +1,6 @@
 {
     "rewrites": [
-      { "source": "/api/(.*)", "destination": "http://144.24.99.59:8116/$1" }
+      { "source": "/api/(.*)", "destination": "https://dicomviewer.weteck.co/$1" }
     ]
 }
   
