@@ -1,6 +1,4 @@
 {
-    "rewrites": [
-      { "source": "/api/(.*)", "destination": "https://dicomviewer.weteck.co/$1" }
-    ]
+    "rewrites": []
 }
   
